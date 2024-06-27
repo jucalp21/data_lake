@@ -43,6 +43,8 @@ Resources:
             Principal:
               Service: 
                 - 'cloudformation.amazonaws.com'
+                - 'cloudformation.sync.codeconnections.amazonaws.com'
+                - 'ec2.amazonaws.com'
             Action: 'sts:AssumeRole'
       Policies:
         - PolicyName: 'DataLakeBucketPolicy'

@@ -1,0 +1,127 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "Template to create S3 buckets for Bronze, Silver, and Gold stages in a Data Lake, and AWS Glue resources for data ingestion and ETL jobs"
+
+Resources:
+  BronzeBucket:
+    Type: "AWS::S3::Bucket"
+    Properties:
+      BucketName: !Sub "${AWS::AccountId}-dl-bronze"
+      VersioningConfiguration:
+        Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+
+  SilverBucket:
+    Type: "AWS::S3::Bucket"
+    Properties:
+      BucketName: !Sub "${AWS::AccountId}-dl-silver"
+      VersioningConfiguration:
+        Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+
+  GoldBucket:
+    Type: "AWS::S3::Bucket"
+    Properties:
+      BucketName: !Sub "${AWS::AccountId}-dl-gold"
+      VersioningConfiguration:
+        Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+
+  GlueDatabase:
+    Type: "AWS::Glue::Database"
+    Properties:
+      CatalogId: !Ref "AWS::AccountId"
+      DatabaseInput:
+        Name: "data_lake_db"
+        Description: "Glue database for the data lake"
+
+  GlueETLJobIngest:
+    Type: "AWS::Glue::Job"
+    Properties:
+      Name: "data_lake_etl_job_ingest"
+      Role: !GetAtt GlueServiceRole.Arn
+      Command:
+        Name: "glueetl"
+        ScriptLocation: !Sub "s3://${AWS::AccountId}-scripts/etl_api_jasmin.py"
+        PythonVersion: "3"
+      DefaultArguments:
+        "--TempDir": !Sub "s3://${AWS::AccountId}-temp/"
+        "--job-bookmark-option": "job-bookmark-enable"
+        "--enable-metrics": ""
+      MaxRetries: 1
+      ExecutionProperty:
+        MaxConcurrentRuns: 1
+      Timeout: 2880
+
+  GlueServiceRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service: "glue.amazonaws.com"
+            Action: "sts:AssumeRole"
+      Policies:
+        - PolicyName: "GlueServicePolicy"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: "Allow"
+                Action:
+                  - "s3:GetObject"
+                  - "s3:PutObject"
+                  - "s3:ListBucket"
+                Resource:
+                  - !Sub "arn:aws:s3:::${AWS::AccountId}-dl-*"
+                  - !Sub "arn:aws:s3:::${AWS::AccountId}-dl-*/*"
+              - Effect: "Allow"
+                Action:
+                  - "glue:*"
+                Resource: "*"
+              - Effect: "Allow"
+                Action:
+                  - "tag:GetResources"
+                  - "tag:TagResources"
+                  - "tag:UntagResources"
+                Resource: "*"
+              - Effect: "Allow"
+                Action:
+                  - "iam:CreateRole"
+                  - "iam:DeleteRole"
+                  - "iam:AttachRolePolicy"
+                  - "iam:DetachRolePolicy"
+                  - "iam:PassRole"
+                  - "iam:PutRolePolicy"
+                  - "iam:GetRole"
+                Resource: "arn:aws:iam::*:role/DataLake-GlueServiceRole-*"
+
+Outputs:
+  BronzeBucketName:
+    Description: "Name of the Bronze S3 bucket"
+    Value: !Ref BronzeBucket
+
+  SilverBucketName:
+    Description: "Name of the Silver S3 bucket"
+    Value: !Ref SilverBucket
+
+  GoldBucketName:
+    Description: "Name of the Gold S3 bucket"
+    Value: !Ref GoldBucket
+
+  GlueDatabaseName:
+    Description: "Name of the Glue database"
+    Value: !Ref GlueDatabase
+
+  GlueETLJobIngestName:
+    Description: "Name of the Glue ETL job for ingesting data"
+    Value: !Ref GlueETLJobIngest

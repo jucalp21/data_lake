@@ -1,0 +1,67 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "s3:CreateBucket",
+        "s3:DeleteBucket",
+        "s3:ListBucket",
+        "s3:PutBucketPolicy",
+        "s3:PutBucketVersioning",
+        "s3:PutEncryptionConfiguration",
+        "s3:PutBucketAcl",
+        "s3:GetBucketLocation",
+        "s3:PutObject",
+        "s3:GetObject",
+        "s3:DeleteObject"
+      ],
+      "Resource": "arn:aws:s3:::*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "glue:CreateJob",
+        "glue:DeleteJob",
+        "glue:GetJob",
+        "glue:GetJobs",
+        "glue:UpdateJob",
+        "glue:StartJobRun",
+        "glue:GetJobRun",
+        "glue:GetJobRuns",
+        "glue:BatchGetJobs",
+        "glue:BatchGetDevEndpoints",
+        "glue:BatchGetWorkflows",
+        "glue:BatchStopJobRun",
+        "glue:CreateDatabase",
+        "glue:DeleteDatabase",
+        "glue:GetDatabase",
+        "glue:GetDatabases",
+        "glue:UpdateDatabase",
+        "glue:CreateTable",
+        "glue:DeleteTable",
+        "glue:GetTable",
+        "glue:GetTables",
+        "glue:UpdateTable",
+        "glue:CreateCrawler",
+        "glue:DeleteCrawler",
+        "glue:GetCrawler",
+        "glue:GetCrawlers",
+        "glue:UpdateCrawler",
+        "glue:StartCrawler",
+        "glue:StopCrawler"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": ["iam:CreateRole", "iam:DeleteRole", "iam:AttachRolePolicy", "iam:DetachRolePolicy", "iam:PassRole", "iam:TagRole", "iam:PutRolePolicy", "iam:GetRole"],
+      "Resource": "arn:aws:iam::654654288333:role/DataLake-GlueServiceRole-*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": ["tag:GetResources", "tag:TagResources", "tag:UntagResources"],
+      "Resource": "*"
+    }
+  ]
+}

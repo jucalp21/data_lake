@@ -62,6 +62,11 @@
       "Effect": "Allow",
       "Action": ["tag:GetResources", "tag:TagResources", "tag:UntagResources"],
       "Resource": "*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": ["athena:CreateWorkGroup", "athena:GetWorkGroup", "athena:UpdateWorkGroup", "athena:DeleteWorkGroup", "athena:ListWorkGroups"],
+      "Resource": "*"
     }
   ]
 }

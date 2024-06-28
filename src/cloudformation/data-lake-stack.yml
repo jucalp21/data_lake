@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: "2010-09-09"
-Description: "Template to create S3 buckets for Bronze, Silver, and Gold stages in a Data Lake, and AWS Glue resources for data ingestion and ETL jobs"
+Description: "Template to create S3 buckets for Bronze, Silver, and Gold stages in a Data Lake, and AWS Glue resources for data ingestion and ETL jobs, and Athena setup"
 
 Resources:
   BronzeBucket:
@@ -34,6 +34,34 @@ Resources:
         ServerSideEncryptionConfiguration:
           - ServerSideEncryptionByDefault:
               SSEAlgorithm: AES256
+
+  AthenaResultsBucket:
+    Type: "AWS::S3::Bucket"
+    Properties:
+      BucketName: !Sub "${AWS::AccountId}-dl-athena-results"
+      VersioningConfiguration:
+        Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+
+  ScriptBucketPolicy:
+    Type: "AWS::S3::BucketPolicy"
+    Properties:
+      Bucket: "654654288333-scripts"
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              AWS: !GetAtt GlueServiceRole.Arn
+            Action:
+              - "s3:GetObject"
+              - "s3:ListBucket"
+            Resource:
+              - "arn:aws:s3:::654654288333-scripts"
+              - "arn:aws:s3:::654654288333-scripts/*"
 
   GlueDatabase:
     Type: "AWS::Glue::Database"
@@ -111,6 +139,14 @@ Resources:
                   - "iam:PutRolePolicy"
                   - "iam:GetRole"
                 Resource: "arn:aws:iam::*:role/DataLake-GlueServiceRole-*"
+              - Effect: "Allow"
+                Action:
+                  - "athena:CreateWorkGroup"
+                  - "athena:GetWorkGroup"
+                  - "athena:UpdateWorkGroup"
+                  - "athena:DeleteWorkGroup"
+                  - "athena:ListWorkGroups"
+                Resource: "*"
 
   BronzeCrawler:
     Type: "AWS::Glue::Crawler"
@@ -142,6 +178,20 @@ Resources:
         S3Targets:
           - Path: "s3://654654288333-dl-gold/"
 
+  AthenaWorkGroup:
+    Type: "AWS::Athena::WorkGroup"
+    Properties:
+      Name: "data-lake-workgroup"
+      State: "ENABLED"
+      Description: "Work group for Data Lake queries"
+      WorkGroupConfiguration:
+        BytesScannedCutoffPerQuery: 1000000000
+        EnforceWorkGroupConfiguration: true
+        PublishCloudWatchMetricsEnabled: true
+        RequesterPaysEnabled: false
+        ResultConfiguration:
+          OutputLocation: !Sub "s3://${AWS::AccountId}-dl-athena-results/"
+
 Outputs:
   BronzeBucketName:
     Description: "Name of the Bronze S3 bucket"
@@ -154,6 +204,10 @@ Outputs:
   GoldBucketName:
     Description: "Name of the Gold S3 bucket"
     Value: !Ref GoldBucket
+
+  AthenaResultsBucketName:
+    Description: "Name of the Athena results S3 bucket"
+    Value: !Ref AthenaResultsBucket
 
   GlueDatabaseName:
     Description: "Name of the Glue database"
@@ -174,3 +228,7 @@ Outputs:
   GoldCrawlerName:
     Description: "Name of the Glue Crawler for the Gold data"
     Value: !Ref GoldCrawler
+
+  AthenaWorkGroupName:
+    Description: "Name of the Athena work group"
+    Value: !Ref AthenaWorkGroup

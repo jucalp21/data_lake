@@ -87,7 +87,7 @@ Resources:
         "--enable-metrics": ""
       ExecutionProperty:
         MaxConcurrentRuns: 1
-      MaxRetries: 1
+        MaxRetries: 1
       Timeout: 2880
 
   GlueETLJobIngestMongo:
@@ -107,7 +107,7 @@ Resources:
         "--secret-name": "dl/beta/mongoDBRCSecret"
       ExecutionProperty:
         MaxConcurrentRuns: 1
-      MaxRetries: 1
+        MaxRetries: 1
       Timeout: 2880
 
   GlueServiceRole:

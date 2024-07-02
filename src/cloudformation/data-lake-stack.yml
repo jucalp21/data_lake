@@ -104,6 +104,7 @@ Resources:
         "--TempDir": !Sub "s3://${AWS::AccountId}-temp/"
         "--job-bookmark-option": "job-bookmark-enable"
         "--enable-metrics": ""
+        "--secret-name": "dl/beta/mongoDBRCSecret"
       MaxRetries: 1
       ExecutionProperty:
         MaxConcurrentRuns: 1
@@ -167,6 +168,10 @@ Resources:
                   - "athena:DeleteWorkGroup"
                   - "athena:ListWorkGroups"
                 Resource: "*"
+              - Effect: "Allow"
+                Action:
+                  - "secretsmanager:GetSecretValue"
+                Resource: "arn:aws:secretsmanager:us-east-2:654654288333:secret:dl/beta/mongoDBRCSecret"
 
   BronzeCrawler:
     Type: "AWS::Glue::Crawler"

@@ -71,15 +71,35 @@ Resources:
         Name: "data_lake_db"
         Description: "Glue database for the data lake"
 
-  GlueETLJobIngest:
+  GlueETLJobIngestJasmin:
     Type: "AWS::Glue::Job"
     Properties:
-      Name: "data_lake_etl_job_ingest"
+      Name: "data_lake_jasmin_etl_job_ingest"
       Role: !GetAtt GlueServiceRole.Arn
       Command:
         Name: "glueetl"
         ScriptLocation: !Sub "s3://654654288333-scripts/etl_api_jasmin.py"
         PythonVersion: "3"
+      GlueVersion: "3.0"
+      DefaultArguments:
+        "--TempDir": !Sub "s3://${AWS::AccountId}-temp/"
+        "--job-bookmark-option": "job-bookmark-enable"
+        "--enable-metrics": ""
+      MaxRetries: 1
+      ExecutionProperty:
+        MaxConcurrentRuns: 1
+      Timeout: 2880
+
+  GlueETLJobIngestMongo:
+    Type: "AWS::Glue::Job"
+    Properties:
+      Name: "data_lake_ddbb_etl_job_ingest"
+      Role: !GetAtt GlueServiceRole.Arn
+      Command:
+        Name: "glueetl"
+        ScriptLocation: !Sub "s3://654654288333-scripts/etl_mongo_collections.py"
+        PythonVersion: "3"
+      GlueVersion: "3.0"
       DefaultArguments:
         "--TempDir": !Sub "s3://${AWS::AccountId}-temp/"
         "--job-bookmark-option": "job-bookmark-enable"
@@ -213,9 +233,13 @@ Outputs:
     Description: "Name of the Glue database"
     Value: !Ref GlueDatabase
 
-  GlueETLJobIngestName:
-    Description: "Name of the Glue ETL job for ingesting data"
-    Value: !Ref GlueETLJobIngest
+  GlueETLJobJasminIngestName:
+    Description: "Name of the Glue ETL job for ingesting data from Jasmin API"
+    Value: !Ref GlueETLJobIngestJasmin
+
+  GlueETLJobDDBBIngestName:
+    Description: "Name of the Glue ETL job for ingesting data from MongoDB"
+    Value: !Ref GlueETLJobIngestMongo
 
   BronzeCrawlerName:
     Description: "Name of the Glue Crawler for the Bronze data"

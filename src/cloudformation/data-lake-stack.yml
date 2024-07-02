@@ -85,9 +85,9 @@ Resources:
         "--TempDir": !Sub "s3://${AWS::AccountId}-temp/"
         "--job-bookmark-option": "job-bookmark-enable"
         "--enable-metrics": ""
-      MaxRetries: 1
       ExecutionProperty:
         MaxConcurrentRuns: 1
+      MaxRetries: 1
       Timeout: 2880
 
   GlueETLJobIngestMongo:
@@ -105,9 +105,9 @@ Resources:
         "--job-bookmark-option": "job-bookmark-enable"
         "--enable-metrics": ""
         "--secret-name": "dl/beta/mongoDBRCSecret"
-      MaxRetries: 1
       ExecutionProperty:
         MaxConcurrentRuns: 1
+      MaxRetries: 1
       Timeout: 2880
 
   GlueServiceRole:
@@ -171,7 +171,7 @@ Resources:
               - Effect: "Allow"
                 Action:
                   - "secretsmanager:GetSecretValue"
-                Resource: "arn:aws:secretsmanager:us-east-2:654654288333:secret:dl/beta/mongoDBRCSecret"
+                Resource: "arn:aws:secretsmanager:us-east-2:654654288333:secret:dl/beta/mongoDBRCSecret-C5MJE7"
 
   BronzeCrawler:
     Type: "AWS::Glue::Crawler"

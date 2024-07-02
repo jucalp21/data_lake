@@ -171,7 +171,7 @@ Resources:
               - Effect: "Allow"
                 Action:
                   - "secretsmanager:GetSecretValue"
-                Resource: "arn:aws:secretsmanager:us-east-2:${AWS::AccountId}:secret:dl/beta/mongoDBRCSecret-C5MJE7"
+                Resource: "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:dl/beta/mongoDBRCSecret-C5MJE7"
 
   BronzeCrawler:
     Type: "AWS::Glue::Crawler"

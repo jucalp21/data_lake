@@ -22,12 +22,8 @@ mongo_uri_base = "mongodb://root:oneG-TrYh4Ck%2aTh15@3.210.8.173:27017/?authSour
 for collection in collections:
     mongo_uri = f"{mongo_uri_base}&database={database}&collection={collection}"
     df = spark.read.format("mongo").option("uri", mongo_uri).load()
-    
-    # Procesar datos (transformaciones si es necesario)
-    # df = df.select("name", "status", "species")
-    
-    # Escribir los datos en S3
-    output_path = f"s3://{s3_output_path}/your-prefix/{collection}/"
+
+    output_path = f"s3://{s3_output_path}/mongo/{collection}/"
     df.write.format("parquet").mode("overwrite").save(output_path)
 
 job.commit()

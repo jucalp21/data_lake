@@ -14,7 +14,6 @@ spark = glueContext.spark_session
 job = Job(glueContext)
 job.init(args['JOB_NAME'], args)
 
-
 database = "myspace1a_rc"
 collections = ["users", "cities", "offices", "rooms"]
 mongo_uri_base = "mongodb://root:oneG-TrYh4Ck%2aTh15@3.210.8.173:27017/?authSource=admin&readPreference=primary&directConnection=true&ssl=false"

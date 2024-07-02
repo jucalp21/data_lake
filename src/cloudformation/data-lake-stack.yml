@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: "2010-09-09"
-Description: "Template to create S3 buckets for Bronze, Silver, and Gold stages in a Data Lake, and AWS Glue resources for data ingestion and ETL jobs, and Athena setup"
+Description: "Template to create S3 buckets for Bronze, Silver, and Gold stages in a Data Lake, and AWS Glue resources for data ingestion and ETL jobs, Athena setup, and API for Athena results data"
 
 Resources:
   BronzeBucket:
@@ -217,6 +217,113 @@ Resources:
         ResultConfiguration:
           OutputLocation: !Sub "s3://${AWS::AccountId}-dl-athena-results/"
 
+  AthenaResultsDataLambda:
+    Type: "AWS::Lambda::Function"
+    Properties:
+      FunctionName: "GetAthenaResultsData"
+      Handler: "index.handler"
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Runtime: "nodejs14.x"
+      Code:
+        ZipFile: |
+          const AWS = require('aws-sdk');
+          const s3 = new AWS.S3();
+
+          exports.handler = async (event) => {
+            const params = {
+              Bucket: process.env.ATHENA_RESULTS_BUCKET,
+              Key: process.env.ATHENA_RESULTS_KEY
+            };
+
+            try {
+              const data = await s3.getObject(params).promise();
+              const json = JSON.parse(data.Body.toString('utf-8'));
+
+              return {
+                statusCode: 200,
+                body: JSON.stringify(json),
+                headers: {
+                  'Content-Type': 'application/json'
+                }
+              };
+            } catch (error) {
+              return {
+                statusCode: 500,
+                body: JSON.stringify(error),
+                headers: {
+                  'Content-Type': 'application/json'
+                }
+              };
+            }
+          };
+      Environment:
+        Variables:
+          ATHENA_RESULTS_BUCKET: !Sub "${AWS::AccountId}-dl-athena-results"
+          ATHENA_RESULTS_KEY: "path/to/your/data/file.json"
+      Timeout: 30
+
+  LambdaExecutionRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service: "lambda.amazonaws.com"
+            Action: "sts:AssumeRole"
+      Policies:
+        - PolicyName: "S3AccessPolicy"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: "Allow"
+                Action:
+                  - "s3:GetObject"
+                Resource:
+                  - !Sub "arn:aws:s3:::${AWS::AccountId}-dl-athena-results/*"
+              - Effect: "Allow"
+                Action:
+                  - "logs:*"
+                Resource: "*"
+
+  AthenaResultsDataApi:
+    Type: "AWS::ApiGateway::RestApi"
+    Properties:
+      Name: "AthenaResultsDataApi"
+      Description: "API for accessing Athena results data"
+
+  AthenaResultsDataResource:
+    Type: "AWS::ApiGateway::Resource"
+    Properties:
+      ParentId: !GetAtt AthenaResultsDataApi.RootResourceId
+      PathPart: "athena-results-data"
+      RestApiId: !Ref AthenaResultsDataApi
+
+  AthenaResultsDataGetMethod:
+    Type: "AWS::ApiGateway::Method"
+    Properties:
+      AuthorizationType: "NONE"
+      HttpMethod: "GET"
+      ResourceId: !Ref AthenaResultsDataResource
+      RestApiId: !Ref AthenaResultsDataApi
+      Integration:
+        Type: "AWS_PROXY"
+        IntegrationHttpMethod: "POST"
+        Uri: !Sub
+          - "arn:aws:apigateway:${Region}:lambda:path/2015-03-31/functions/${LambdaArn}/invocations"
+          - { Region: !Ref "AWS::Region", LambdaArn: !GetAtt AthenaResultsDataLambda.Arn }
+
+  LambdaApiGatewayPermission:
+    Type: "AWS::Lambda::Permission"
+    Properties:
+      FunctionName: !Ref AthenaResultsDataLambda
+      Action: "lambda:InvokeFunction"
+      Principal: "apigateway.amazonaws.com"
+      SourceArn: !Sub
+        - "arn:aws:execute-api:${Region}:${AccountId}:${ApiId}/*/GET/athena-results-data"
+        - { Region: !Ref "AWS::Region", AccountId: !Ref "AWS::AccountId", ApiId: !Ref AthenaResultsDataApi }
+
 Outputs:
   BronzeBucketName:
     Description: "Name of the Bronze S3 bucket"
@@ -261,3 +368,7 @@ Outputs:
   AthenaWorkGroupName:
     Description: "Name of the Athena work group"
     Value: !Ref AthenaWorkGroup
+
+  AthenaResultsDataApiUrl:
+    Description: "URL of the API for accessing Athena results data"
+    Value: !Sub "https://${AthenaResultsDataApi}.execute-api.${AWS::Region}.amazonaws.com/prod/athena-results-data"

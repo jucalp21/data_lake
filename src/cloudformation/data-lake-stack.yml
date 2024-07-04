@@ -115,7 +115,7 @@ Resources:
       NetworkConfiguration:
         SecurityGroupIds:
           - "sg-088d5bf6bd46b9f25"
-        SubnetId: ""
+        SubnetId: "subnet-6b38070c"
 
   GlueServiceRole:
     Type: "AWS::IAM::Role"
@@ -178,7 +178,7 @@ Resources:
               - Effect: "Allow"
                 Action:
                   - "secretsmanager:GetSecretValue"
-                Resource: "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:dl/beta/mongoDBRCSecret-C5MJE7"
+                Resource: "arn:aws:secretsmanager:us-east-1b:${AWS::AccountId}:secret:dl/beta/mongoDBRCSecret-C5MJE7"
 
   GlueVPCConnection:
     Type: "AWS::Glue::Connection"
@@ -188,10 +188,10 @@ Resources:
         ConnectionProperties:
           NETWORK: "VPC"
         PhysicalConnectionRequirements:
-          AvailabilityZone: "${AWS::Region}"
+          AvailabilityZone: "us-east-1b"
           SecurityGroupIdList:
             - "sg-088d5bf6bd46b9f25"
-          SubnetId: ""
+          SubnetId: "subnet-6b38070c"
       ConnectionName: "glue-vpc-connection"
 
   BronzeCrawler:
@@ -332,8 +332,8 @@ Resources:
         Type: "AWS_PROXY"
         IntegrationHttpMethod: "POST"
         Uri: !Sub
-          - "arn:aws:apigateway:${Region}:lambda:path/2015-03-31/functions/${LambdaArn}/invocations"
-          - { Region: !Ref "AWS::Region", LambdaArn: !GetAtt AthenaResultsDataLambda.Arn }
+          - "arn:aws:apigateway:us-east-1b:lambda:path/2015-03-31/functions/${LambdaArn}/invocations"
+          - { Region: "us-east-1b", LambdaArn: !GetAtt AthenaResultsDataLambda.Arn }
 
   LambdaApiGatewayPermission:
     Type: "AWS::Lambda::Permission"
@@ -342,8 +342,8 @@ Resources:
       Action: "lambda:InvokeFunction"
       Principal: "apigateway.amazonaws.com"
       SourceArn: !Sub
-        - "arn:aws:execute-api:${Region}:${AccountId}:${ApiId}/*/GET/athena-results-data"
-        - { Region: !Ref "AWS::Region", AccountId: !Ref "AWS::AccountId", ApiId: !Ref AthenaResultsDataApi }
+        - "arn:aws:execute-api:us-east-1b:${AccountId}:${ApiId}/*/GET/athena-results-data"
+        - { Region: !Ref "us-east-1b", AccountId: !Ref "AWS::AccountId", ApiId: !Ref AthenaResultsDataApi }
 
 Outputs:
   BronzeBucketName:
@@ -392,4 +392,4 @@ Outputs:
 
   AthenaResultsDataApiUrl:
     Description: "URL of the API for accessing Athena results data"
-    Value: !Sub "https://${AthenaResultsDataApi}.execute-api.${AWS::Region}.amazonaws.com/prod/athena-results-data"
+    Value: !Sub "https://${AthenaResultsDataApi}.execute-api.us-east-1b.amazonaws.com/prod/athena-results-data"

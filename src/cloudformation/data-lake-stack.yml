@@ -109,6 +109,13 @@ Resources:
         MaxConcurrentRuns: 1
         MaxRetries: 1
       Timeout: 2880
+      Connections:
+        Connections:
+          - !Ref GlueVPCConnection
+      NetworkConfiguration:
+        SecurityGroupIds:
+          - "sg-088d5bf6bd46b9f25"
+        SubnetId: ""
 
   GlueServiceRole:
     Type: "AWS::IAM::Role"
@@ -172,6 +179,20 @@ Resources:
                 Action:
                   - "secretsmanager:GetSecretValue"
                 Resource: "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:dl/beta/mongoDBRCSecret-C5MJE7"
+
+  GlueVPCConnection:
+    Type: "AWS::Glue::Connection"
+    Properties:
+      ConnectionInput:
+        ConnectionType: "NETWORK"
+        ConnectionProperties:
+          NETWORK: "VPC"
+        PhysicalConnectionRequirements:
+          AvailabilityZone: "${AWS::Region}"
+          SecurityGroupIdList:
+            - "sg-088d5bf6bd46b9f25"
+          SubnetId: ""
+      ConnectionName: "glue-vpc-connection"
 
   BronzeCrawler:
     Type: "AWS::Glue::Crawler"
@@ -259,7 +280,7 @@ Resources:
       Environment:
         Variables:
           ATHENA_RESULTS_BUCKET: !Sub "${AWS::AccountId}-dl-athena-results"
-          ATHENA_RESULTS_KEY: "path/to/your/data/file.json"
+          ATHENA_RESULTS_KEY: ""
       Timeout: 30
 
   LambdaExecutionRole:

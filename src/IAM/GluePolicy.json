@@ -16,13 +16,7 @@
         "s3:GetObject",
         "s3:DeleteObject"
       ],
-      "Resource": [
-        "arn:aws:s3:::590184094373-scripts",
-        "arn:aws:s3:::590184094373-dl-athena-results",
-        "arn:aws:s3:::590184094373-dl-bronze",
-        "arn:aws:s3:::590184094373-dl-silver",
-        "arn:aws:s3:::590184094373-dl-gold"
-      ]
+      "Resource": ["arn:aws:s3:::DataLakeDemo", "arn:aws:s3:::DataLakeDemo/*"]
     },
     {
       "Effect": "Allow",

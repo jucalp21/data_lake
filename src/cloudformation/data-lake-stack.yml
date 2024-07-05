@@ -1,55 +1,11 @@
 AWSTemplateFormatVersion: "2010-09-09"
-Description: "Template to create S3 buckets for Bronze, Silver, and Gold stages in a Data Lake, and AWS Glue resources for data ingestion and ETL jobs, and Athena setup"
+Description: "Template to create a single S3 bucket with folders for Bronze, Silver, Gold, Athena Results, and Scripts stages in a Data Lake, and AWS Glue resources for data ingestion and ETL jobs, and Athena setup"
 
 Resources:
-  BronzeBucket:
+  DataLakeBucket:
     Type: "AWS::S3::Bucket"
     Properties:
-      BucketName: !Sub "${AWS::AccountId}-dl-bronze"
-      VersioningConfiguration:
-        Status: Enabled
-      BucketEncryption:
-        ServerSideEncryptionConfiguration:
-          - ServerSideEncryptionByDefault:
-              SSEAlgorithm: AES256
-
-  SilverBucket:
-    Type: "AWS::S3::Bucket"
-    Properties:
-      BucketName: !Sub "${AWS::AccountId}-dl-silver"
-      VersioningConfiguration:
-        Status: Enabled
-      BucketEncryption:
-        ServerSideEncryptionConfiguration:
-          - ServerSideEncryptionByDefault:
-              SSEAlgorithm: AES256
-
-  GoldBucket:
-    Type: "AWS::S3::Bucket"
-    Properties:
-      BucketName: !Sub "${AWS::AccountId}-dl-gold"
-      VersioningConfiguration:
-        Status: Enabled
-      BucketEncryption:
-        ServerSideEncryptionConfiguration:
-          - ServerSideEncryptionByDefault:
-              SSEAlgorithm: AES256
-
-  ScriptsBucket:
-    Type: "AWS::S3::Bucket"
-    Properties:
-      BucketName: !Sub "${AWS::AccountId}-scripts"
-      VersioningConfiguration:
-        Status: Enabled
-      BucketEncryption:
-        ServerSideEncryptionConfiguration:
-          - ServerSideEncryptionByDefault:
-              SSEAlgorithm: AES256
-
-  AthenaResultsBucket:
-    Type: "AWS::S3::Bucket"
-    Properties:
-      BucketName: !Sub "${AWS::AccountId}-dl-athena-results"
+      BucketName: "data-lake-demo"
       VersioningConfiguration:
         Status: Enabled
       BucketEncryption:
@@ -60,7 +16,7 @@ Resources:
   ScriptBucketPolicy:
     Type: "AWS::S3::BucketPolicy"
     Properties:
-      Bucket: !Sub "${AWS::AccountId}-scripts"
+      Bucket: !Ref DataLakeBucket
       PolicyDocument:
         Version: "2012-10-17"
         Statement:
@@ -71,8 +27,8 @@ Resources:
               - "s3:GetObject"
               - "s3:ListBucket"
             Resource:
-              - !Sub "arn:aws:s3:::${AWS::AccountId}-scripts"
-              - !Sub "arn:aws:s3:::${AWS::AccountId}-scripts/*"
+              - !Sub "arn:aws:s3:::DataLakeDemo/scripts"
+              - !Sub "arn:aws:s3:::DataLakeDemo/scripts/*"
 
   GlueDatabase:
     Type: "AWS::Glue::Database"
@@ -89,36 +45,17 @@ Resources:
       Role: !GetAtt GlueServiceRole.Arn
       Command:
         Name: "glueetl"
-        ScriptLocation: !Sub "s3://${AWS::AccountId}-scripts/etl_api_jasmin.py"
+        ScriptLocation: !Sub "s3://DataLakeDemo/scripts/etl_api_jasmin.py"
         PythonVersion: "3"
       GlueVersion: "3.0"
       DefaultArguments:
-        "--TempDir": !Sub "s3://${AWS::AccountId}-temp/"
+        "--TempDir": !Sub "s3://DataLakeDemo/temp/"
         "--job-bookmark-option": "job-bookmark-enable"
         "--enable-metrics": ""
       MaxRetries: 1
       ExecutionProperty:
         MaxConcurrentRuns: 1
       Timeout: 2880
-
-  # GlueETLJobIngestMongo:
-  #   Type: "AWS::Glue::Job"
-  #   Properties:
-  #     Name: "data_lake_ddbb_etl_job_ingest"
-  #     Role: !GetAtt GlueServiceRole.Arn
-  #     Command:
-  #       Name: "glueetl"
-  #       ScriptLocation: !Sub "s3://${AWS::AccountId}-scripts/etl_mongo_collections.py"
-  #       PythonVersion: "3"
-  #     GlueVersion: "3.0"
-  #     DefaultArguments:
-  #       "--TempDir": !Sub "s3://${AWS::AccountId}-temp/"
-  #       "--job-bookmark-option": "job-bookmark-enable"
-  #       "--enable-metrics": ""
-  #     MaxRetries: 1
-  #     ExecutionProperty:
-  #       MaxConcurrentRuns: 1
-  #     Timeout: 2880
 
   GlueServiceRole:
     Type: "AWS::IAM::Role"
@@ -141,15 +78,7 @@ Resources:
                   - "s3:PutObject"
                   - "s3:ListBucket"
                 Resource:
-                  - !Sub "arn:aws:s3:::${AWS::AccountId}-dl-*"
-                  - !Sub "arn:aws:s3:::${AWS::AccountId}-dl-*/*"
-              - Effect: "Allow"
-                Action:
-                  - "s3:GetObject"
-                  - "s3:ListBucket"
-                Resource:
-                  - !Sub "arn:aws:s3:::${AWS::AccountId}-scripts"
-                  - !Sub "arn:aws:s3:::${AWS::AccountId}-scripts/*"
+                  - !Sub "arn:aws:s3:::DataLakeDemo/*"
               - Effect: "Allow"
                 Action:
                   - "glue:*"
@@ -187,7 +116,7 @@ Resources:
       DatabaseName: "data_lake_db"
       Targets:
         S3Targets:
-          - Path: !Sub "s3://${AWS::AccountId}-dl-bronze/"
+          - Path: "s3://DataLakeDemo/bronze/"
 
   SilverCrawler:
     Type: "AWS::Glue::Crawler"
@@ -197,7 +126,7 @@ Resources:
       DatabaseName: "data_lake_db"
       Targets:
         S3Targets:
-          - Path: !Sub "s3://${AWS::AccountId}-dl-silver/"
+          - Path: "s3://DataLakeDemo/silver/"
 
   GoldCrawler:
     Type: "AWS::Glue::Crawler"
@@ -207,7 +136,7 @@ Resources:
       DatabaseName: "data_lake_db"
       Targets:
         S3Targets:
-          - Path: !Sub "s3://${AWS::AccountId}-dl-gold/"
+          - Path: "s3://DataLakeDemo/gold/"
 
   AthenaWorkGroup:
     Type: "AWS::Athena::WorkGroup"
@@ -221,24 +150,12 @@ Resources:
         PublishCloudWatchMetricsEnabled: true
         RequesterPaysEnabled: false
         ResultConfiguration:
-          OutputLocation: !Sub "s3://${AWS::AccountId}-dl-athena-results/"
+          OutputLocation: "s3://DataLakeDemo/athena-results/"
 
 Outputs:
-  BronzeBucketName:
-    Description: "Name of the Bronze S3 bucket"
-    Value: !Ref BronzeBucket
-
-  SilverBucketName:
-    Description: "Name of the Silver S3 bucket"
-    Value: !Ref SilverBucket
-
-  GoldBucketName:
-    Description: "Name of the Gold S3 bucket"
-    Value: !Ref GoldBucket
-
-  AthenaResultsBucketName:
-    Description: "Name of the Athena results S3 bucket"
-    Value: !Ref AthenaResultsBucket
+  DataLakeBucketName:
+    Description: "Name of the Data Lake S3 bucket"
+    Value: !Ref DataLakeBucket
 
   GlueDatabaseName:
     Description: "Name of the Glue database"
@@ -247,10 +164,6 @@ Outputs:
   GlueETLJobJasminIngestName:
     Description: "Name of the Glue ETL job for ingesting data from Jasmin API"
     Value: !Ref GlueETLJobIngestJasmin
-
-  # GlueETLJobDDBBIngestName:
-  #   Description: "Name of the Glue ETL job for ingesting data from MongoDB"
-  #   Value: !Ref GlueETLJobIngestMongo
 
   BronzeCrawlerName:
     Description: "Name of the Glue Crawler for the Bronze data"

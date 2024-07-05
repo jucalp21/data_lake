@@ -66,12 +66,12 @@
     },
     {
       "Effect": "Allow",
-      "Action": ["iam:CreateRole", "iam:DeleteRole", "iam:AttachRolePolicy", "iam:DetachRolePolicy", "iam:PassRole", "iam:TagRole", "iam:PutRolePolicy", "iam:GetRole"],
-      "Resource": "arn:aws:iam::590184094373:role/DataLake-GlueServiceRole-*"
+      "Action": ["iam:CreateRole", "iam:DeleteRole", "iam:AttachRolePolicy", "iam:DetachRolePolicy", "iam:DeleteRolePolicy", "iam:PassRole", "iam:TagRole", "iam:PutRolePolicy", "iam:GetRole"],
+      "Resource": ["arn:aws:iam::590184094373:role/DataLake-GlueServiceRole-*", "arn:aws:iam::590184094373:role/DataLake-LambdaExecutionRole-*"]
     },
     {
       "Effect": "Allow",
-      "Action": ["tag:GetResources", "tag:TagResources", "tag:UntagResources"],
+      "Action": ["tag:GetResources", "tag:TagResources", "tag:UntagResources", "tag:GetTagKeys", "tag:GetTagValues"],
       "Resource": "*"
     },
     {

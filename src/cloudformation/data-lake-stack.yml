@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: "2010-09-09"
-Description: "Template to create S3 buckets for Bronze, Silver, and Gold stages in a Data Lake, and AWS Glue resources for data ingestion and ETL jobs, Athena setup, and API for Athena results data"
+Description: "Template to create S3 buckets for Bronze, Silver, and Gold stages in a Data Lake, and AWS Glue resources for data ingestion and ETL jobs, and Athena setup"
 
 Resources:
   BronzeBucket:
@@ -35,10 +35,10 @@ Resources:
           - ServerSideEncryptionByDefault:
               SSEAlgorithm: AES256
 
-  AthenaResultsBucket:
+  ScriptsBucket:
     Type: "AWS::S3::Bucket"
     Properties:
-      BucketName: !Sub "${AWS::AccountId}-dl-athena-results"
+      BucketName: !Sub "${AWS::AccountId}-scripts"
       VersioningConfiguration:
         Status: Enabled
       BucketEncryption:
@@ -46,10 +46,10 @@ Resources:
           - ServerSideEncryptionByDefault:
               SSEAlgorithm: AES256
 
-  ScriptsBucket:
+  AthenaResultsBucket:
     Type: "AWS::S3::Bucket"
     Properties:
-      BucketName: !Sub "${AWS::AccountId}-scripts"
+      BucketName: !Sub "${AWS::AccountId}-dl-athena-results"
       VersioningConfiguration:
         Status: Enabled
       BucketEncryption:
@@ -96,37 +96,29 @@ Resources:
         "--TempDir": !Sub "s3://${AWS::AccountId}-temp/"
         "--job-bookmark-option": "job-bookmark-enable"
         "--enable-metrics": ""
+      MaxRetries: 1
       ExecutionProperty:
         MaxConcurrentRuns: 1
-        MaxRetries: 1
       Timeout: 2880
 
-  GlueETLJobIngestMongo:
-    Type: "AWS::Glue::Job"
-    Properties:
-      Name: "data_lake_ddbb_etl_job_ingest"
-      Role: !GetAtt GlueServiceRole.Arn
-      Command:
-        Name: "glueetl"
-        ScriptLocation: !Sub "s3://${AWS::AccountId}-scripts/etl_mongo_collections.py"
-        PythonVersion: "3"
-      GlueVersion: "3.0"
-      DefaultArguments:
-        "--TempDir": !Sub "s3://${AWS::AccountId}-temp/"
-        "--job-bookmark-option": "job-bookmark-enable"
-        "--enable-metrics": ""
-        "--secret-name": "qa/dl/mongoDbSecret"
-      ExecutionProperty:
-        MaxConcurrentRuns: 1
-        MaxRetries: 1
-      Timeout: 2880
-      Connections:
-        Connections:
-          - !Ref GlueVPCConnection
-      NetworkConfiguration:
-        SecurityGroupIds:
-          - "sg-088d5bf6bd46b9f25"
-        SubnetId: "subnet-6b38070c"
+  # GlueETLJobIngestMongo:
+  #   Type: "AWS::Glue::Job"
+  #   Properties:
+  #     Name: "data_lake_ddbb_etl_job_ingest"
+  #     Role: !GetAtt GlueServiceRole.Arn
+  #     Command:
+  #       Name: "glueetl"
+  #       ScriptLocation: !Sub "s3://${AWS::AccountId}-scripts/etl_mongo_collections.py"
+  #       PythonVersion: "3"
+  #     GlueVersion: "3.0"
+  #     DefaultArguments:
+  #       "--TempDir": !Sub "s3://${AWS::AccountId}-temp/"
+  #       "--job-bookmark-option": "job-bookmark-enable"
+  #       "--enable-metrics": ""
+  #     MaxRetries: 1
+  #     ExecutionProperty:
+  #       MaxConcurrentRuns: 1
+  #     Timeout: 2880
 
   GlueServiceRole:
     Type: "AWS::IAM::Role"
@@ -177,7 +169,7 @@ Resources:
                   - "iam:PassRole"
                   - "iam:PutRolePolicy"
                   - "iam:GetRole"
-                Resource: !Sub "arn:aws:iam::${AWS::AccountId}:role/DataLake-GlueServiceRole-*"
+                Resource: "arn:aws:iam::*:role/DataLake-GlueServiceRole-*"
               - Effect: "Allow"
                 Action:
                   - "athena:CreateWorkGroup"
@@ -186,24 +178,6 @@ Resources:
                   - "athena:DeleteWorkGroup"
                   - "athena:ListWorkGroups"
                 Resource: "*"
-              - Effect: "Allow"
-                Action:
-                  - "secretsmanager:GetSecretValue"
-                Resource: !Sub "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:qa/dl/mongoDbSecret-6BJzgj"
-
-  GlueVPCConnection:
-    Type: "AWS::Glue::Connection"
-    Properties:
-      ConnectionInput:
-        ConnectionType: "NETWORK"
-        ConnectionProperties:
-          NETWORK: "VPC"
-        PhysicalConnectionRequirements:
-          AvailabilityZone: !Sub "${AWS::Region}b"
-          SecurityGroupIdList:
-            - "sg-088d5bf6bd46b9f25"
-          SubnetId: "subnet-6b38070c"
-        Name: "glue-vpc-connection"
 
   BronzeCrawler:
     Type: "AWS::Glue::Crawler"
@@ -249,112 +223,6 @@ Resources:
         ResultConfiguration:
           OutputLocation: !Sub "s3://${AWS::AccountId}-dl-athena-results/"
 
-  AthenaResultsDataLambda:
-    Type: "AWS::Lambda::Function"
-    Properties:
-      FunctionName: "GetAthenaResultsData"
-      Handler: "index.handler"
-      Role: !GetAtt LambdaExecutionRole.Arn
-      Runtime: "nodejs14.x"
-      Code:
-        ZipFile: |
-          const AWS = require('aws-sdk');
-          const s3 = new AWS.S3();
-
-          exports.handler = async (event) => {
-            const params = {
-              Bucket: process.env.ATHENA_RESULTS_BUCKET,
-              Key: process.env.ATHENA_RESULTS_KEY
-            };
-
-            try {
-              const data = await s3.getObject(params).promise();
-              const json = JSON.parse(data.Body.toString('utf-8'));
-
-              return {
-                statusCode: 200,
-                body: JSON.stringify(json),
-                headers: {
-                  'Content-Type': 'application/json'
-                }
-              };
-            } catch (error) {
-              return {
-                statusCode: 500,
-                body: JSON.stringify(error),
-                headers: {
-                  'Content-Type': 'application/json'
-                }
-              };
-            }
-          };
-      Environment:
-        Variables:
-          ATHENA_RESULTS_BUCKET: !Sub "${AWS::AccountId}-dl-athena-results"
-          ATHENA_RESULTS_KEY: ""
-      Timeout: 30
-
-  LambdaExecutionRole:
-    Type: "AWS::IAM::Role"
-    Properties:
-      AssumeRolePolicyDocument:
-        Version: "2012-10-17"
-        Statement:
-          - Effect: "Allow"
-            Principal:
-              Service: "lambda.amazonaws.com"
-            Action: "sts:AssumeRole"
-      Policies:
-        - PolicyName: "S3AccessPolicy"
-          PolicyDocument:
-            Version: "2012-10-17"
-            Statement:
-              - Effect: "Allow"
-                Action:
-                  - "s3:GetObject"
-                Resource: !Sub "arn:aws:s3:::${AWS::AccountId}-dl-athena-results/*"
-              - Effect: "Allow"
-                Action:
-                  - "logs:*"
-                Resource: "*"
-
-  AthenaResultsDataApi:
-    Type: "AWS::ApiGateway::RestApi"
-    Properties:
-      Name: "AthenaResultsDataApi"
-      Description: "API for accessing Athena results data"
-
-  AthenaResultsDataResource:
-    Type: "AWS::ApiGateway::Resource"
-    Properties:
-      ParentId: !GetAtt AthenaResultsDataApi.RootResourceId
-      PathPart: "athena-results-data"
-      RestApiId: !Ref AthenaResultsDataApi
-
-  AthenaResultsDataGetMethod:
-    Type: "AWS::ApiGateway::Method"
-    Properties:
-      AuthorizationType: "NONE"
-      HttpMethod: "GET"
-      ResourceId: !Ref AthenaResultsDataResource
-      RestApiId: !Ref AthenaResultsDataApi
-      Integration:
-        Type: "AWS_PROXY"
-        IntegrationHttpMethod: "POST"
-        Uri: !Sub
-          - "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaArn}/invocations"
-          - { Region: !Ref "AWS::Region", LambdaArn: !GetAtt AthenaResultsDataLambda.Arn }
-
-  LambdaApiGatewayPermission:
-    Type: "AWS::Lambda::Permission"
-    Properties:
-      FunctionName: !Ref AthenaResultsDataLambda
-      Action: "lambda:InvokeFunction"
-      Principal: "apigateway.amazonaws.com"
-      SourceArn: !Sub
-        - "arn:aws:execute-api:${AWS::Region}:${AccountId}:${ApiId}/*/GET/athena-results-data"
-        - { Region: !Ref "AWS::Region", AccountId: !Ref "AWS::AccountId", ApiId: !Ref AthenaResultsDataApi }
-
 Outputs:
   BronzeBucketName:
     Description: "Name of the Bronze S3 bucket"
@@ -380,9 +248,9 @@ Outputs:
     Description: "Name of the Glue ETL job for ingesting data from Jasmin API"
     Value: !Ref GlueETLJobIngestJasmin
 
-  GlueETLJobDDBBIngestName:
-    Description: "Name of the Glue ETL job for ingesting data from MongoDB"
-    Value: !Ref GlueETLJobIngestMongo
+  # GlueETLJobDDBBIngestName:
+  #   Description: "Name of the Glue ETL job for ingesting data from MongoDB"
+  #   Value: !Ref GlueETLJobIngestMongo
 
   BronzeCrawlerName:
     Description: "Name of the Glue Crawler for the Bronze data"
@@ -399,7 +267,3 @@ Outputs:
   AthenaWorkGroupName:
     Description: "Name of the Athena work group"
     Value: !Ref AthenaWorkGroup
-
-  AthenaResultsDataApiUrl:
-    Description: "URL of the API for accessing Athena results data"
-    Value: !Sub "https://${AthenaResultsDataApi}.execute-api.${AWS::Region}.amazonaws.com/prod/athena-results-data"

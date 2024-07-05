@@ -21,7 +21,7 @@ job = Job(glueContext)
 job.init(args['JOB_NAME'], args)
 
 
-s3_output_path = "654654288333-dl-bronze"
+s3_output_path = "590184094373-dl-bronze"
 api_url = "https://rickandmortyapi.com/api/character"
 
 try:
@@ -32,9 +32,11 @@ try:
     logger.info("Datos obtenidos de la API correctamente")
 
     if 'results' not in data:
-        raise ValueError("La respuesta de la API no contiene el campo 'results'")
+        raise ValueError(
+            "La respuesta de la API no contiene el campo 'results'")
     results = data['results']
-    logger.info(f"Datos extraídos de 'results': {results[:2]}... (mostrando solo los dos primeros elementos)")
+    logger.info(
+        f"Datos extraídos de 'results': {results[:2]}... (mostrando solo los dos primeros elementos)")
 
     rdd = sc.parallelize(results)
     df = spark.read.json(rdd)

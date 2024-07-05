@@ -55,7 +55,12 @@
         "glue:GetCrawlers",
         "glue:UpdateCrawler",
         "glue:StartCrawler",
-        "glue:StopCrawler"
+        "glue:StopCrawler",
+        "glue:CreateConnection",
+        "glue:DeleteConnection",
+        "glue:GetConnection",
+        "glue:GetConnections",
+        "glue:UpdateConnection"
       ],
       "Resource": "*"
     },
@@ -63,6 +68,23 @@
       "Effect": "Allow",
       "Action": ["iam:CreateRole", "iam:DeleteRole", "iam:AttachRolePolicy", "iam:DetachRolePolicy", "iam:PassRole", "iam:TagRole", "iam:PutRolePolicy", "iam:GetRole"],
       "Resource": "arn:aws:iam::590184094373:role/DataLake-GlueServiceRole-*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "iam:CreateRole",
+        "iam:DeleteRole",
+        "iam:AttachRolePolicy",
+        "iam:DetachRolePolicy",
+        "iam:PassRole",
+        "iam:TagRole",
+        "iam:PutRolePolicy",
+        "iam:GetRole",
+        "iam:TagInstanceProfile",
+        "iam:TagPolicy",
+        "iam:UntagRole"
+      ],
+      "Resource": "arn:aws:iam::590184094373:role/DataLake-LambdaExecutionRole-*"
     },
     {
       "Effect": "Allow",

@@ -73,6 +73,11 @@
       "Effect": "Allow",
       "Action": ["athena:CreateWorkGroup", "athena:GetWorkGroup", "athena:UpdateWorkGroup", "athena:DeleteWorkGroup", "athena:ListWorkGroups"],
       "Resource": "*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": ["apigateway:POST", "apigateway:GET", "apigateway:PUT", "apigateway:DELETE", "apigateway:PATCH"],
+      "Resource": "arn:aws:apigateway:*::/restapis"
     }
   ]
 }

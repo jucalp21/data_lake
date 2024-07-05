@@ -17,11 +17,11 @@
         "s3:DeleteObject"
       ],
       "Resource": [
-        "arn:aws:s3:::${aws:accountId}-scripts",
-        "arn:aws:s3:::${aws:accountId}-dl-athena-results",
-        "arn:aws:s3:::${aws:accountId}-dl-bronze",
-        "arn:aws:s3:::${aws:accountId}-dl-silver",
-        "arn:aws:s3:::${aws:accountId}-dl-gold"
+        "arn:aws:s3:::590184094373-scripts",
+        "arn:aws:s3:::590184094373-dl-athena-results",
+        "arn:aws:s3:::590184094373-dl-bronze",
+        "arn:aws:s3:::590184094373-dl-silver",
+        "arn:aws:s3:::590184094373-dl-gold"
       ]
     },
     {
@@ -62,7 +62,7 @@
     {
       "Effect": "Allow",
       "Action": ["iam:CreateRole", "iam:DeleteRole", "iam:AttachRolePolicy", "iam:DetachRolePolicy", "iam:PassRole", "iam:TagRole", "iam:PutRolePolicy", "iam:GetRole"],
-      "Resource": "arn:aws:iam::${aws:accountId}:role/DataLake-GlueServiceRole-*"
+      "Resource": "arn:aws:iam::590184094373:role/DataLake-GlueServiceRole-*"
     },
     {
       "Effect": "Allow",

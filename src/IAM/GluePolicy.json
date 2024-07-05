@@ -71,23 +71,6 @@
     },
     {
       "Effect": "Allow",
-      "Action": [
-        "iam:CreateRole",
-        "iam:DeleteRole",
-        "iam:AttachRolePolicy",
-        "iam:DetachRolePolicy",
-        "iam:PassRole",
-        "iam:TagRole",
-        "iam:PutRolePolicy",
-        "iam:GetRole",
-        "iam:TagInstanceProfile",
-        "iam:TagPolicy",
-        "iam:UntagRole"
-      ],
-      "Resource": "arn:aws:iam::590184094373:role/DataLake-LambdaExecutionRole-*"
-    },
-    {
-      "Effect": "Allow",
       "Action": ["tag:GetResources", "tag:TagResources", "tag:UntagResources"],
       "Resource": "*"
     },
@@ -99,7 +82,7 @@
     {
       "Effect": "Allow",
       "Action": ["apigateway:POST", "apigateway:GET", "apigateway:PUT", "apigateway:DELETE", "apigateway:PATCH"],
-      "Resource": "arn:aws:apigateway:*::/restapis"
+      "Resource": ["arn:aws:apigateway:us-east-2::/restapis", "arn:aws:apigateway:us-east-2::/restapis/*"]
     }
   ]
 }

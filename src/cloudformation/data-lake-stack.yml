@@ -13,23 +13,6 @@ Resources:
           - ServerSideEncryptionByDefault:
               SSEAlgorithm: AES256
 
-  ScriptBucketPolicy:
-    Type: "AWS::S3::BucketPolicy"
-    Properties:
-      Bucket: !Ref DataLakeBucket
-      PolicyDocument:
-        Version: "2012-10-17"
-        Statement:
-          - Effect: "Allow"
-            Principal:
-              AWS: !GetAtt GlueServiceRole.Arn
-            Action:
-              - "s3:GetObject"
-              - "s3:ListBucket"
-            Resource:
-              - !Sub "arn:aws:s3:::DataLakeDemo/scripts"
-              - !Sub "arn:aws:s3:::DataLakeDemo/scripts/*"
-
   GlueDatabase:
     Type: "AWS::Glue::Database"
     Properties:
@@ -45,11 +28,11 @@ Resources:
       Role: !GetAtt GlueServiceRole.Arn
       Command:
         Name: "glueetl"
-        ScriptLocation: !Sub "s3://DataLakeDemo/scripts/etl_api_jasmin.py"
+        ScriptLocation: !Sub "s3://data-lake-demo/scripts/etl_api_jasmin.py"
         PythonVersion: "3"
       GlueVersion: "3.0"
       DefaultArguments:
-        "--TempDir": !Sub "s3://DataLakeDemo/temp/"
+        "--TempDir": !Sub "s3://data-lake-demo/temp/"
         "--job-bookmark-option": "job-bookmark-enable"
         "--enable-metrics": ""
       MaxRetries: 1
@@ -78,7 +61,7 @@ Resources:
                   - "s3:PutObject"
                   - "s3:ListBucket"
                 Resource:
-                  - !Sub "arn:aws:s3:::DataLakeDemo/*"
+                  - !Sub "arn:aws:s3:::data-lake-demo/*"
               - Effect: "Allow"
                 Action:
                   - "glue:*"
@@ -116,7 +99,7 @@ Resources:
       DatabaseName: "data_lake_db"
       Targets:
         S3Targets:
-          - Path: "s3://DataLakeDemo/bronze/"
+          - Path: "s3://data-lake-demo/bronze/"
 
   SilverCrawler:
     Type: "AWS::Glue::Crawler"
@@ -126,7 +109,7 @@ Resources:
       DatabaseName: "data_lake_db"
       Targets:
         S3Targets:
-          - Path: "s3://DataLakeDemo/silver/"
+          - Path: "s3://data-lake-demo/silver/"
 
   GoldCrawler:
     Type: "AWS::Glue::Crawler"
@@ -136,7 +119,7 @@ Resources:
       DatabaseName: "data_lake_db"
       Targets:
         S3Targets:
-          - Path: "s3://DataLakeDemo/gold/"
+          - Path: "s3://data-lake-demo/gold/"
 
   AthenaWorkGroup:
     Type: "AWS::Athena::WorkGroup"
@@ -150,7 +133,60 @@ Resources:
         PublishCloudWatchMetricsEnabled: true
         RequesterPaysEnabled: false
         ResultConfiguration:
-          OutputLocation: "s3://DataLakeDemo/athena-results/"
+          OutputLocation: "s3://data-lake-demo/athena-results/"
+
+  CreateS3FoldersFunction:
+    Type: "AWS::Lambda::Function"
+    Properties:
+      Handler: "index.handler"
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        ZipFile: |
+          import boto3
+          import cfnresponse
+
+          def handler(event, context):
+              s3 = boto3.client('s3')
+              bucket = event['ResourceProperties']['BucketName']
+              prefixes = event['ResourceProperties']['Prefixes']
+              for prefix in prefixes:
+                  s3.put_object(Bucket=bucket, Key=prefix)
+              cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
+
+      Runtime: "python3.8"
+      Timeout: 60
+
+  CreateS3FoldersCustomResource:
+    Type: "Custom::CreateS3Folders"
+    Properties:
+      ServiceToken: !GetAtt CreateS3FoldersFunction.Arn
+      BucketName: !Ref DataLakeBucket
+      Prefixes:
+        - "bronze/"
+        - "silver/"
+        - "gold/"
+        - "athena-results/"
+        - "scripts/"
+
+  LambdaExecutionRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service: "lambda.amazonaws.com"
+            Action: "sts:AssumeRole"
+      Policies:
+        - PolicyName: "LambdaS3AccessPolicy"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: "Allow"
+                Action:
+                  - "s3:PutObject"
+                Resource: !Sub "arn:aws:s3:::data-lake-demo/*"
 
 Outputs:
   DataLakeBucketName:

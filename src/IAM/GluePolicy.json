@@ -16,7 +16,7 @@
         "s3:GetObject",
         "s3:DeleteObject"
       ],
-      "Resource": ["arn:aws:s3:::DataLakeDemo", "arn:aws:s3:::DataLakeDemo/*"]
+      "Resource": ["arn:aws:s3:::data-lake-demo", "arn:aws:s3:::data-lake-demo/*"]
     },
     {
       "Effect": "Allow",
@@ -77,6 +77,19 @@
       "Effect": "Allow",
       "Action": ["apigateway:POST", "apigateway:GET", "apigateway:PUT", "apigateway:DELETE", "apigateway:PATCH"],
       "Resource": ["arn:aws:apigateway:us-east-2::/restapis", "arn:aws:apigateway:us-east-2::/restapis/*"]
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "lambda:CreateFunction",
+        "lambda:DeleteFunction",
+        "lambda:InvokeFunction",
+        "lambda:GetFunction",
+        "lambda:ListFunctions",
+        "lambda:UpdateFunctionConfiguration",
+        "lambda:UpdateFunctionCode"
+      ],
+      "Resource": "arn:aws:lambda:us-east-2:590184094373:function:DataLake-CreateS3FoldersFunction-*"
     }
   ]
 }

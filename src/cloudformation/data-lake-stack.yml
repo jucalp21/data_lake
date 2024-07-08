@@ -91,35 +91,15 @@ Resources:
                   - "athena:ListWorkGroups"
                 Resource: "*"
 
-  BronzeCrawler:
+  CharactersBronzeCrawler:
     Type: "AWS::Glue::Crawler"
     Properties:
-      Name: "ingest_bronze_jasmin_data"
+      Name: "ingest_bronze_characters"
       Role: !GetAtt GlueServiceRole.Arn
       DatabaseName: "data_lake_db"
       Targets:
         S3Targets:
-          - Path: "s3://data-lake-demo/bronze/"
-
-  SilverCrawler:
-    Type: "AWS::Glue::Crawler"
-    Properties:
-      Name: "ingest_silver_jasmin_data"
-      Role: !GetAtt GlueServiceRole.Arn
-      DatabaseName: "data_lake_db"
-      Targets:
-        S3Targets:
-          - Path: "s3://data-lake-demo/silver/"
-
-  GoldCrawler:
-    Type: "AWS::Glue::Crawler"
-    Properties:
-      Name: "ingest_gold_jasmin_data"
-      Role: !GetAtt GlueServiceRole.Arn
-      DatabaseName: "data_lake_db"
-      Targets:
-        S3Targets:
-          - Path: "s3://data-lake-demo/gold/"
+          - Path: "s3://data-lake-demo/bronze/characters/"
 
   AthenaWorkGroup:
     Type: "AWS::Athena::WorkGroup"
@@ -201,17 +181,9 @@ Outputs:
     Description: "Name of the Glue ETL job for ingesting data from Jasmin API"
     Value: !Ref GlueETLJobIngestJasmin
 
-  BronzeCrawlerName:
+  CharactersBronzeCrawlerName:
     Description: "Name of the Glue Crawler for the Bronze data"
-    Value: !Ref BronzeCrawler
-
-  SilverCrawlerName:
-    Description: "Name of the Glue Crawler for the Silver data"
-    Value: !Ref SilverCrawler
-
-  GoldCrawlerName:
-    Description: "Name of the Glue Crawler for the Gold data"
-    Value: !Ref GoldCrawler
+    Value: !Ref CharactersBronzeCrawler
 
   AthenaWorkGroupName:
     Description: "Name of the Athena work group"

@@ -22,17 +22,29 @@ try:
     job = Job(glueContext)
     job.init(args['JOB_NAME'], args)
 
+    # Configurar SLF4J para suprimir logs innecesarios
+    spark._jsc.hadoopConfiguration().set("log4j.logger.org.apache.spark", "ERROR")
+    spark._jsc.hadoopConfiguration().set("log4j.logger.org.spark-project", "ERROR")
+
     # Definición de variables
     s3_output_path = "data-lake-demo/bronze/dbUsers"
     database = "myspace1a_rc"
     target_collection = "users"
-    mongo_uri_base = "mongodb://root:oneG-TrYh4Ck*Th15@3.210.8.173:27017/?authSource=admin&readPreference=primary&directConnection=true&ssl=false"
-    mongo_uri = f"{mongo_uri_base}&database={database}&collection={target_collection}"
+    mongo_uri_base = "mongodb://root:oneG-TrYh4Ck*Th15@3.210.8.173:27017"
+    mongo_uri = f"{mongo_uri_base}/{database}.{target_collection}?authSource=admin&readPreference=primary&directConnection=true&ssl=false"
 
     logger.info(f"Conectando a MongoDB con URI: {mongo_uri}")
 
     # Cargar datos de MongoDB
-    df = spark.read.format("mongo").option("uri", mongo_uri).load()
+    df = spark.read.format("mongo") \
+        .option("uri", mongo_uri_base) \
+        .option("database", database) \
+        .option("collection", target_collection) \
+        .option("authSource", "admin") \
+        .option("readPreference", "primary") \
+        .option("directConnection", "true") \
+        .option("ssl", "false") \
+        .load()
 
     if df is None or df.rdd.isEmpty():
         raise ValueError("No se encontraron datos en la colección de MongoDB.")

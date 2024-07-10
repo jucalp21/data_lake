@@ -4,6 +4,11 @@ import random
 from datetime import datetime, timedelta
 
 
+# MODELOS DE PRUEBA: Carla Ferrara, Sara Vogel, Alejandra Roa, Rebeca Villalobos, Ninna Portugal, Jessica Portman
+# MODELOS DE PRUEBA: Rafaela Luna, Sofia Kaufman, Karina Goldman, Jessy Cusack, Vicky Portman, Mara Kovalenko
+# PROMEDIO MENSUAL: 10.000 (6.000 JASMIN - 4.000 DE STREAMATE) DESV 30%.
+# FECHA: En el dia de ejecucion.
+
 def generate_random_date(start, end):
     return start + timedelta(
         seconds=random.randint(0, int((end - start).total_seconds())),

@@ -140,6 +140,16 @@ Resources:
         S3Targets:
           - Path: "s3://data-lake-demo/bronze/characters/"
 
+  DBUsersBronzeCrawler:
+    Type: "AWS::Glue::Crawler"
+    Properties:
+      Name: "ingest_bronze_db_users"
+      Role: !GetAtt GlueServiceRole.Arn
+      DatabaseName: "data_lake_db"
+      Targets:
+        S3Targets:
+          - Path: "s3://data-lake-demo/bronze/dbUsers/"
+
   AthenaWorkGroup:
     Type: "AWS::Athena::WorkGroup"
     Properties:
@@ -225,8 +235,12 @@ Outputs:
     Value: !Ref GlueETLJobMongoDB
 
   CharactersBronzeCrawlerName:
-    Description: "Name of the Glue Crawler for the Bronze data"
+    Description: "Name of the Glue Crawler for the Bronze data (characters)"
     Value: !Ref CharactersBronzeCrawler
+
+  DBUsersBronzeCrawlerName:
+    Description: "Name of the Glue Crawler for the Bronze data (DB Users)"
+    Value: !Ref DBUsersBronzeCrawler
 
   AthenaWorkGroupName:
     Description: "Name of the Athena work group"

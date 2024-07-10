@@ -62,6 +62,72 @@ Resources:
         Connections:
           - !Ref GlueJobConnection
 
+  GlueETLJobIngestMongoDBOffices:
+    Type: "AWS::Glue::Job"
+    Properties:
+      Name: "data_lake_mongodb_offices_etl_job_ingest"
+      Role: !GetAtt GlueServiceRole.Arn
+      Command:
+        Name: "glueetl"
+        ScriptLocation: !Sub "s3://data-lake-demo/scripts/etl_mongo_offices.py"
+        PythonVersion: "3"
+      GlueVersion: "3.0"
+      DefaultArguments:
+        "--TempDir": !Sub "s3://data-lake-demo/temp/"
+        "--job-bookmark-option": "job-bookmark-enable"
+        "--enable-metrics": ""
+      MaxRetries: 1
+      ExecutionProperty:
+        MaxConcurrentRuns: 1
+      Timeout: 2880
+      Connections:
+        Connections:
+          - !Ref GlueJobConnection
+
+  GlueETLJobIngestMongoDBCities:
+    Type: "AWS::Glue::Job"
+    Properties:
+      Name: "data_lake_mongodb_cities_etl_job_ingest"
+      Role: !GetAtt GlueServiceRole.Arn
+      Command:
+        Name: "glueetl"
+        ScriptLocation: !Sub "s3://data-lake-demo/scripts/etl_mongo_cities.py"
+        PythonVersion: "3"
+      GlueVersion: "3.0"
+      DefaultArguments:
+        "--TempDir": !Sub "s3://data-lake-demo/temp/"
+        "--job-bookmark-option": "job-bookmark-enable"
+        "--enable-metrics": ""
+      MaxRetries: 1
+      ExecutionProperty:
+        MaxConcurrentRuns: 1
+      Timeout: 2880
+      Connections:
+        Connections:
+          - !Ref GlueJobConnection
+
+  GlueETLJobIngestMongoDBRooms:
+    Type: "AWS::Glue::Job"
+    Properties:
+      Name: "data_lake_mongodb_rooms_etl_job_ingest"
+      Role: !GetAtt GlueServiceRole.Arn
+      Command:
+        Name: "glueetl"
+        ScriptLocation: !Sub "s3://data-lake-demo/scripts/etl_mongo_rooms.py"
+        PythonVersion: "3"
+      GlueVersion: "3.0"
+      DefaultArguments:
+        "--TempDir": !Sub "s3://data-lake-demo/temp/"
+        "--job-bookmark-option": "job-bookmark-enable"
+        "--enable-metrics": ""
+      MaxRetries: 1
+      ExecutionProperty:
+        MaxConcurrentRuns: 1
+      Timeout: 2880
+      Connections:
+        Connections:
+          - !Ref GlueJobConnection
+
   GlueServiceRole:
     Type: "AWS::IAM::Role"
     Properties:
@@ -150,6 +216,36 @@ Resources:
         S3Targets:
           - Path: "s3://data-lake-demo/bronze/dbUsers/"
 
+  DBOfficesBronzeCrawler:
+    Type: "AWS::Glue::Crawler"
+    Properties:
+      Name: "ingest_bronze_db_offices"
+      Role: !GetAtt GlueServiceRole.Arn
+      DatabaseName: "data_lake_db"
+      Targets:
+        S3Targets:
+          - Path: "s3://data-lake-demo/bronze/dbOffices/"
+
+  DBCitiesBronzeCrawler:
+    Type: "AWS::Glue::Crawler"
+    Properties:
+      Name: "ingest_bronze_db_cities"
+      Role: !GetAtt GlueServiceRole.Arn
+      DatabaseName: "data_lake_db"
+      Targets:
+        S3Targets:
+          - Path: "s3://data-lake-demo/bronze/dbCities/"
+
+  DBRoomsBronzeCrawler:
+    Type: "AWS::Glue::Crawler"
+    Properties:
+      Name: "ingest_bronze_db_rooms"
+      Role: !GetAtt GlueServiceRole.Arn
+      DatabaseName: "data_lake_db"
+      Targets:
+        S3Targets:
+          - Path: "s3://data-lake-demo/bronze/dbRooms/"
+
   AthenaWorkGroup:
     Type: "AWS::Athena::WorkGroup"
     Properties:
@@ -231,8 +327,20 @@ Outputs:
     Value: !Ref GlueETLJobIngestJasmin
 
   GlueETLJobMongoDBIngestName:
-    Description: "Name of the Glue ETL job for ingesting data from MongoDB"
+    Description: "Name of the Glue ETL job for ingesting data from MongoDB (users)"
     Value: !Ref GlueETLJobMongoDB
+
+  GlueETLJobIngestMongoDBOfficesName:
+    Description: "Name of the Glue ETL job for ingesting data from MongoDB (offices)"
+    Value: !Ref GlueETLJobIngestMongoDBOffices
+
+  GlueETLJobIngestMongoDBCitiesName:
+    Description: "Name of the Glue ETL job for ingesting data from MongoDB (cities)"
+    Value: !Ref GlueETLJobIngestMongoDBOffices
+
+  GlueETLJobIngestMongoDBRoomsName:
+    Description: "Name of the Glue ETL job for ingesting data from MongoDB (rooms)"
+    Value: !Ref GlueETLJobIngestMongoDBRooms
 
   CharactersBronzeCrawlerName:
     Description: "Name of the Glue Crawler for the Bronze data (characters)"
@@ -241,6 +349,18 @@ Outputs:
   DBUsersBronzeCrawlerName:
     Description: "Name of the Glue Crawler for the Bronze data (DB Users)"
     Value: !Ref DBUsersBronzeCrawler
+
+  DBOfficesBronzeCrawlerName:
+    Description: "Name of the Glue Crawler for the Bronze data (DB Offices)"
+    Value: !Ref DBOfficesBronzeCrawler
+
+  DBCitiesBronzeCrawlerName:
+    Description: "Name of the Glue Crawler for the Bronze data (DB Cities)"
+    Value: !Ref DBCitiesBronzeCrawler
+
+  DBRoomsBronzeCrawlerName:
+    Description: "Name of the Glue Crawler for the Bronze data (DB Rooms)"
+    Value: !Ref DBRoomsBronzeCrawler
 
   AthenaWorkGroupName:
     Description: "Name of the Athena work group"

@@ -6,37 +6,48 @@ from awsglue.utils import getResolvedOptions
 from pyspark.context import SparkContext
 from awsglue.context import GlueContext
 from awsglue.job import Job
+import logging
+from datetime import datetime
 
-def get_secret(secret_name):
-    region_name = "us-east-2"
+# Configuración del logger para registrar eventos
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-    client = boto3.client('secretsmanager', region_name=region_name)
+try:
+    # Obtener los argumentos del trabajo de Glue
+    args = getResolvedOptions(sys.argv, ['JOB_NAME'])
+    sc = SparkContext()
+    glueContext = GlueContext(sc)
+    spark = glueContext.spark_session
+    job = Job(glueContext)
+    job.init(args['JOB_NAME'], args)
 
-    get_secret_value_response = client.get_secret_value(SecretId=secret_name)
-    secret = get_secret_value_response['SecretString']
-    return json.loads(secret)
+    # Definición de variables
+    s3_output_path = "data-lake-demo/bronze/dbUsers"
+    database = "myspace1a_rc"
+    target_collection = "users"
+    mongo_uri_base = "mongodb://root:oneG-TrYh4Ck*Th15@3.210.8.173:27017/?authSource=admin&readPreference=primary&directConnection=true&ssl=false"
+    mongo_uri = f"{mongo_uri_base}&database={database}&collection={target_collection}"
 
-args = getResolvedOptions(sys.argv, ['JOB_NAME', 'secret-name'])
-secret_name = args['secret-name']
-secret = get_secret(secret_name)
-mongo_uri_base = secret['mongo_uri']
+    logger.info(f"Conectando a MongoDB con URI: {mongo_uri}")
 
-s3_output_path = "654654288333-dl-bronze"
-
-sc = SparkContext()
-glueContext = GlueContext(sc)
-spark = glueContext.spark_session
-job = Job(glueContext)
-job.init(args['JOB_NAME'], args)
-
-database = "myspace1a_rc"
-collections = ["users", "cities", "offices", "rooms"]
-
-for collection in collections:
-    mongo_uri = f"{mongo_uri_base}&database={database}&collection={collection}"
+    # Cargar datos de MongoDB
     df = spark.read.format("mongo").option("uri", mongo_uri).load()
 
-    output_path = f"s3://{s3_output_path}/mongo/{collection}/"
-    df.write.format("parquet").mode("overwrite").save(output_path)
+    if df is None or df.rdd.isEmpty():
+        raise ValueError("No se encontraron datos en la colección de MongoDB.")
 
-job.commit()
+    output_path = f"s3://{s3_output_path}/data_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.parquet"
+    df.write.parquet(output_path)
+
+    logger.info(f"Datos escritos en: {output_path}")
+
+    job.commit()
+
+except Exception as e:
+    logger.error(f"Error en el trabajo de Glue: {str(e)}")
+    job.commit()
+    raise
+
+finally:
+    sc.stop()

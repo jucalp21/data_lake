@@ -40,6 +40,28 @@ Resources:
         MaxConcurrentRuns: 1
       Timeout: 2880
 
+  GlueETLJobMongoDB:
+    Type: "AWS::Glue::Job"
+    Properties:
+      Name: "data_lake_mongodb_etl_job"
+      Role: !GetAtt GlueServiceRole.Arn
+      Command:
+        Name: "glueetl"
+        ScriptLocation: !Sub "s3://data-lake-demo/scripts/etl_mongo_collections.py"
+        PythonVersion: "3"
+      GlueVersion: "3.0"
+      DefaultArguments:
+        "--TempDir": !Sub "s3://data-lake-demo/temp/"
+        "--job-bookmark-option": "job-bookmark-enable"
+        "--enable-metrics": ""
+      MaxRetries: 1
+      ExecutionProperty:
+        MaxConcurrentRuns: 1
+      Timeout: 2880
+      Connections:
+        Connections:
+          - !Ref GlueJobConnection
+
   GlueServiceRole:
     Type: "AWS::IAM::Role"
     Properties:
@@ -90,6 +112,23 @@ Resources:
                   - "athena:DeleteWorkGroup"
                   - "athena:ListWorkGroups"
                 Resource: "*"
+              - Effect: "Allow"
+                Action:
+                  - "secretsmanager:GetSecretValue"
+                Resource: "*"
+
+  GlueJobConnection:
+    Type: "AWS::Glue::Connection"
+    Properties:
+      CatalogId: !Ref "AWS::AccountId"
+      ConnectionInput:
+        Name: "MongoDBConnection"
+        ConnectionType: "NETWORK"
+        PhysicalConnectionRequirements:
+          AvailabilityZone: "us-east-1a"
+          SecurityGroupIdList:
+            - sg-0008fd71a9b867731
+          SubnetId: "subnet-0d005ef0bb1b57797"
 
   CharactersBronzeCrawler:
     Type: "AWS::Glue::Crawler"
@@ -180,6 +219,10 @@ Outputs:
   GlueETLJobJasminIngestName:
     Description: "Name of the Glue ETL job for ingesting data from Jasmin API"
     Value: !Ref GlueETLJobIngestJasmin
+
+  GlueETLJobMongoDBIngestName:
+    Description: "Name of the Glue ETL job for ingesting data from MongoDB"
+    Value: !Ref GlueETLJobMongoDB
 
   CharactersBronzeCrawlerName:
     Description: "Name of the Glue Crawler for the Bronze data"

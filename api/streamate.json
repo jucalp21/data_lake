@@ -1,0 +1,38 @@
+{
+  "studios": [
+    {
+      "studioId": 1234,
+      "emailAddress": "teststudio1234@streamatemodels.com",
+      "earnings": [
+        {
+          "date": "2021-07-06",
+          "payableAmount": 4.55
+        },
+        {
+          "date": "2021-06-29",
+          "payableAmount": 4.9
+        }
+      ],
+      "performers": [
+        {
+          "performerId": 1234567,
+          "nickname": "TestPerformer101",
+          "emailAddress": "testperformer101@streamatemodels.com",
+          "earnings": [
+            {
+              "date": "2021-07-06",
+              "onlineSeconds": 7311,
+              "payableAmount": 4.55
+            },
+            {
+              "date": "2021-06-29",
+              "onlineSeconds": 26,
+              "payableAmount": 4.9
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "data_timestamp": 1625782464
+}

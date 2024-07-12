@@ -40,6 +40,25 @@ Resources:
         MaxConcurrentRuns: 1
       Timeout: 2880
 
+  GlueETLJobIngestStreamateMock:
+    Type: "AWS::Glue::Job"
+    Properties:
+      Name: "data_lake_streamate_mock_etl_job_ingest"
+      Role: !GetAtt GlueServiceRole.Arn
+      Command:
+        Name: "glueetl"
+        ScriptLocation: !Sub "s3://data-lake-demo/scripts/etl_api_streamate_mock.py"
+        PythonVersion: "3"
+      GlueVersion: "3.0"
+      DefaultArguments:
+        "--TempDir": !Sub "s3://data-lake-demo/temp/"
+        "--job-bookmark-option": "job-bookmark-enable"
+        "--enable-metrics": ""
+      MaxRetries: 1
+      ExecutionProperty:
+        MaxConcurrentRuns: 1
+      Timeout: 2880
+
   GlueETLJobMongoDB:
     Type: "AWS::Glue::Job"
     Properties:
@@ -206,6 +225,16 @@ Resources:
         S3Targets:
           - Path: "s3://data-lake-demo/bronze/characters/"
 
+  StreamateMockBronzeCrawler:
+    Type: "AWS::Glue::Crawler"
+    Properties:
+      Name: "ingest_bronze_streamate_mock"
+      Role: !GetAtt GlueServiceRole.Arn
+      DatabaseName: "data_lake_db"
+      Targets:
+        S3Targets:
+          - Path: "s3://data-lake-demo/bronze/streamate_mock/"
+
   DBUsersBronzeCrawler:
     Type: "AWS::Glue::Crawler"
     Properties:
@@ -326,6 +355,10 @@ Outputs:
     Description: "Name of the Glue ETL job for ingesting data from Jasmin API"
     Value: !Ref GlueETLJobIngestJasmin
 
+  GlueETLJobIngestStreamateMockName:
+    Description: "Name of the Glue ETL job for ingesting data from Streamate API (mock)"
+    Value: !Ref GlueETLJobIngestStreamateMock
+
   GlueETLJobMongoDBIngestName:
     Description: "Name of the Glue ETL job for ingesting data from MongoDB (users)"
     Value: !Ref GlueETLJobMongoDB
@@ -345,6 +378,10 @@ Outputs:
   CharactersBronzeCrawlerName:
     Description: "Name of the Glue Crawler for the Bronze data (characters)"
     Value: !Ref CharactersBronzeCrawler
+
+  StreamateMockBronzeCrawlerName:
+    Description: "Name of the Glue Crawler for the Bronze data (Streamate Mock)"
+    Value: !Ref StreamateMockBronzeCrawler
 
   DBUsersBronzeCrawlerName:
     Description: "Name of the Glue Crawler for the Bronze data (DB Users)"

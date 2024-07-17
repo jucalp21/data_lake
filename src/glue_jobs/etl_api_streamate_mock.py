@@ -1,13 +1,16 @@
 import sys
+import json
+import requests
 from awsglue.job import Job
+from datetime import datetime
 from awsglue.transforms import *
 from awsglue.context import GlueContext
 from pyspark.context import SparkContext
 from awsglue.utils import getResolvedOptions
 from awsglue.dynamicframe import DynamicFrame
-from pyspark.sql.functions import col, explode, lit, current_timestamp
+from pyspark.sql.types import StructType, StructField, StringType, LongType, DoubleType, TimestampType
+from pyspark.sql import Row
 
-# Set Up Job
 args = getResolvedOptions(sys.argv, ["JOB_NAME"])
 sc = SparkContext()
 glueContext = GlueContext(sc)
@@ -15,71 +18,79 @@ spark = glueContext.spark_session
 job = Job(glueContext)
 job.init(args["JOB_NAME"], args)
 
-# S3 options
-s3_path = "s3://data-lake-demo/mock_data/streamate"
-data_format = "json"
+s3_output_path = "s3://data-lake-demo/bronze/"
+api_url = "https://devstreamatemock.omgworldwidegroup.com/api/v1/studio/earningsdailysummary"
+token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbEFkZHJlc3MiOiJ0ZXN0c3R1ZGlvMTIzNEBzdHJlYW1hdGVtb2RlbHMuY29tIiwiaWF0IjoxNzIxMjMyODE3LCJleHAiOjE3NTI3OTA0MTd9.wXwM86yl9w-PiQVCVNW-9ljGCudPBki77YSC7esmuwI"
 
-# Dynamic Frame
-data_source = glueContext.create_dynamic_frame.from_options(
-    connection_type="s3",
-    connection_options={"paths": [s3_path]},
-    format=data_format
-)
+try:
+    payload = {
+        "token": token
+    }
 
-# Convert DynamicFrame to DataFrame for processing
-df = data_source.toDF()
+    response = requests.post(api_url, json=payload)
+    response.raise_for_status()
+    data = response.json()
 
-# Add the current timestamp as a column
-df_with_timestamp = df.withColumn("data_timestamp", lit(current_timestamp()))
+    if 'studios' not in data:
+        raise ValueError("No se encontró el campo studios")
 
-# Extract performers and add timestamp
-performers_df = df_with_timestamp.select(
-    explode(col("studios.performers")).alias("performer"),
-    col("data_timestamp")
-).select(
-    col("performer.performerId").alias("performer_id"),
-    col("performer.nickname"),
-    col("performer.emailAddress").alias("email_address"),
-    col("data_timestamp")
-)
+    studios = data['studios']
 
-# Store performers data in S3
-performers_dynamic_frame = DynamicFrame.fromDF(
-    performers_df, glueContext, "performers_dynamic_frame")
-performers_output_path = "s3://your-bucket-name/performers/"
-glueContext.write_dynamic_frame.from_options(
-    frame=performers_dynamic_frame,
-    connection_type="s3",
-    connection_options={"path": performers_output_path},
-    format="json"
-)
+    # Convertir cada estudio a DataFrame de Spark
+    studios_df = []
+    earnings_by_studio_df = []
+    performers_df = []
+    earnings_by_performer_df = []
 
-# Extract earnings data and add timestamp
-earnings_df = df_with_timestamp.select(
-    explode(col("studios.performers")).alias("performer"),
-    col("data_timestamp")
-).select(
-    col("performer.performerId").alias("performer_id"),
-    explode(col("performer.earnings")).alias("earning"),
-    col("data_timestamp")
-).select(
-    col("performer_id"),
-    col("earning.date").alias("date"),
-    col("earning.onlineSeconds").alias("online_seconds"),
-    col("earning.payableAmount").alias("payable_amount"),
-    col("data_timestamp")
-)
+    for studio in studios:
+        studio_id = studio["studioId"]
+        email_address = studio["emailAddress"]
 
-# Create and store performers_earnings table
-performers_earnings_dynamic_frame = DynamicFrame.fromDF(
-    earnings_df, glueContext, "performers_earnings_dynamic_frame")
-performers_earnings_output_path = "s3://your-bucket-name/performers_earnings/"
-glueContext.write_dynamic_frame.from_options(
-    frame=performers_earnings_dynamic_frame,
-    connection_type="s3",
-    connection_options={"path": performers_earnings_output_path},
-    format="json"
-)
+        # Crear DataFrame de Spark para studios
+        studios_df.append((studio_id, email_address))
 
-# Commit Job
+        # Crear DataFrame de Spark para earnings_by_studio
+        for earning in studio['earnings']:
+            earnings_by_studio_df.append(
+                (earning['date'], float(earning['payableAmount']), studio_id))
+
+        # Crear DataFrame de Spark para performers
+        for performer in studio['performers']:
+            performers_df.append(
+                (performer["performerId"], performer["nickname"], performer["emailAddress"]))
+
+            # Crear DataFrame de Spark para earnings_by_performer
+            for earning in performer['earnings']:
+                earnings_by_performer_df.append((earning['date'], int(earning['onlineSeconds']), float(
+                    earning['payableAmount']), performer["performerId"]))
+
+    # Crear DataFrames de Spark a partir de las listas
+    df_studios = spark.createDataFrame(
+        studios_df, ["studioId", "emailAddress"])
+    df_earnings_by_studio = spark.createDataFrame(
+        earnings_by_studio_df, ["date", "payableAmount", "studioId"])
+    df_performers = spark.createDataFrame(
+        performers_df, ["performerId", "nickname", "emailAddress"])
+    df_earnings_by_performer = spark.createDataFrame(earnings_by_performer_df, [
+                                                     "date", "onlineSeconds", "payableAmount", "performerId"])
+
+    # Almacenar studios en S3
+    df_studios.write.json(
+        f"{s3_output_path}/streamatemock/studios/data_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.json")
+
+    # Almacenar earnings_by_studio en S3
+    df_earnings_by_studio.write.json(
+        f"{s3_output_path}/streamatemock/earnings_by_studio/data_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.json")
+
+    # Almacenar performers en S3
+    df_performers.write.json(
+        f"{s3_output_path}/streamatemock/performers/data_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.json")
+
+    # Almacenar earnings_by_performer en S3
+    df_earnings_by_performer.write.json(
+        f"{s3_output_path}/streamatemock/earnings_by_performer/data_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.json")
+
+except Exception as e:
+    raise e
+
 job.commit()

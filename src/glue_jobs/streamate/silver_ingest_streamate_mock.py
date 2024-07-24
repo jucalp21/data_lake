@@ -17,7 +17,8 @@ job.init(args['JOB_NAME'], args)
 
 # Define input and output paths directly in the script
 input_path = "s3://data-lake-demo/bronze/streamate/"
-output_path = "s3://data-lake-demo/silver/studios_earnings/"
+studio_output_path = "s3://data-lake-demo/silver/studios_earnings/"
+performer_output_path = "s3://data-lake-demo/silver/earnings_by_performer/"
 
 # Read the Parquet files from S3 into a DynamicFrame
 dynamic_frame = glueContext.create_dynamic_frame.from_options(
@@ -30,39 +31,70 @@ dynamic_frame = glueContext.create_dynamic_frame.from_options(
 df = dynamic_frame.toDF()
 
 # Extract the relevant data from the nested JSON structure
-records = []
+studio_records = []
+performer_records = []
 
-# Collect the data from the DataFrame
-data = df.collect()
+# Process studio and performer earnings
+if not df.rdd.isEmpty():
+    for row in df.collect():
+        if 'studios' in row:
+            studios = row['studios']
+            for studio in studios:
+                studio_id = studio['studioId']
+                studio_email = studio['emailAddress']
 
-# Assuming the data is structured with one root JSON object containing the studios array
-for row in data:
-    studios = row.studios
-    for studio in studios:
-        studio_id = studio['studioId']
-        email_address = studio['emailAddress']
-        earnings = studio['earnings']
-        for earning in earnings:
-            record = {
-                'studioId': studio_id,
-                'emailAddress': email_address,
-                'date': earning['date'],
-                'payableAmount': earning['payableAmount']
-            }
-            records.append(record)
+                # Process studio earnings
+                earnings = studio['earnings']
+                for earning in earnings:
+                    studio_record = {
+                        'studioId': studio_id,
+                        'emailAddress': studio_email,
+                        'date': earning['date'],
+                        'payableAmount': earning['payableAmount']
+                    }
+                    studio_records.append(studio_record)
 
-# Convert the records to a DataFrame
-processed_df = spark.createDataFrame(records)
+                # Process performer earnings
+                if 'performers' in studio:
+                    performers = studio['performers']
+                    for performer in performers:
+                        performer_id = performer['performerId']
+                        performer_nickname = performer['nickname']
+                        performer_email = performer['emailAddress']
+                        performer_earnings = performer['earnings']
+                        for p_earning in performer_earnings:
+                            performer_record = {
+                                'performerId': performer_id,
+                                'nickname': performer_nickname,
+                                'emailAddress': performer_email,
+                                'date': p_earning['date'],
+                                'onlineSeconds': p_earning['onlineSeconds'],
+                                'payableAmount': p_earning['payableAmount']
+                            }
+                            performer_records.append(performer_record)
 
-# Convert DataFrame to DynamicFrame
-dynamic_dframe = DynamicFrame.fromDF(
-    processed_df, glueContext, "dynamic_dframe")
+# Convert the records to DataFrames
+studio_df = spark.createDataFrame(studio_records)
+performer_df = spark.createDataFrame(performer_records)
 
-# Write the DynamicFrame to S3 as JSON
+# Convert DataFrames to DynamicFrames
+studio_dynamic_dframe = DynamicFrame.fromDF(
+    studio_df, glueContext, "studio_dynamic_dframe")
+performer_dynamic_dframe = DynamicFrame.fromDF(
+    performer_df, glueContext, "performer_dynamic_dframe")
+
+# Write the DynamicFrames to S3 as JSON
 glueContext.write_dynamic_frame.from_options(
-    frame=dynamic_dframe,
+    frame=studio_dynamic_dframe,
     connection_type="s3",
-    connection_options={"path": output_path},
+    connection_options={"path": studio_output_path},
+    format="json"
+)
+
+glueContext.write_dynamic_frame.from_options(
+    frame=performer_dynamic_dframe,
+    connection_type="s3",
+    connection_options={"path": performer_output_path},
     format="json"
 )
 

@@ -7,14 +7,15 @@ from pyspark.context import SparkContext
 from awsglue.context import GlueContext
 from awsglue.job import Job
 from pyspark.sql import SQLContext
-from pyspark.sql.functions import col, lit, coalesce
+from pyspark.sql.functions import col, lit
 from datetime import datetime
 
 # Obtener argumentos del trabajo
 args = getResolvedOptions(sys.argv, ["JOB_NAME"])
-api_url = "https://devstreamatemock.omgworldwidegroup.com/api/v1/user"
-s3_output_path = "s3://data-lake-demo/bronze/users/"
-current_date = datetime.now().strftime("%Y-%m-%d")
+api_url = "https://devstreamatemock.omgworldwidegroup.com/api/v1/studio/earningsdailysummary"
+token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbEFkZHJlc3MiOiJ0ZXN0c3R1ZGlvMTIzNEBzdHJlYW1hdGVtb2RlbHMuY29tIiwiaWF0IjoxNzIxMjMyODE3LCJleHAiOjE3NTI3OTA0MTd9.wXwM86yl9w-PiQVCVNW-9ljGCudPBki77YSC7esmuwI"
+s3_output_path = "s3://data-lake-demo/bronze/"
+payload = {"token": token}
 
 # Inicializar el contexto de Glue
 sc = SparkContext()
@@ -24,46 +25,27 @@ job = Job(glueContext)
 job.init(args['JOB_NAME'], args)
 
 # Extract: Obtener datos desde la API
-response = requests.get(api_url)
+response = requests.post(api_url, json=payload)
 data = response.json()
 
 # Convertir a DataFrame de Spark
 sqlContext = SQLContext(spark)
-df_new = sqlContext.read.json(sc.parallelize([json.dumps(data['users'])]))
-
-# Añadir columna de fecha de procesamiento
-df_new = df_new.withColumn("processing_date", lit(current_date))
+df = sqlContext.read.json(sc.parallelize([json.dumps(data)]))
 
 # Ruta del archivo de salida
-output_path = f'{s3_output_path}'
+output_path = f'{s3_output_path}/streamate/data_{datetime.now().strftime("%Y-%m-%d")}.parquet'
 
 # Cargar datos previos si existen
 try:
-    existing_df = spark.read.parquet(output_path)
-    # Unir los datos existentes con los nuevos
-    combined_df = existing_df.alias("existing").join(
-        df_new.alias("new"), col("existing._id") == col("new._id"), "outer"
-    ).select(
-        coalesce(col("new._id"), col("existing._id")).alias("_id"),
-        coalesce(col("new.artisticName"), col(
-            "existing.artisticName")).alias("artisticName"),
-        coalesce(col("new.jasminUser"), col(
-            "existing.jasminUser")).alias("jasminUser"),
-        coalesce(col("new.office"), col("existing.office")).alias("office"),
-        coalesce(col("new.room"), col("existing.room")).alias("room"),
-        coalesce(col("new.streamateUser"), col(
-            "existing.streamateUser")).alias("streamateUser"),
-        coalesce(col("new.city"), col("existing.city")).alias("city"),
-        coalesce(col("new.user"), col("existing.user")).alias("user"),
-        lit(current_date).alias("processing_date")
-    )
+    existing_df = spark.read.parquet(f"{output_path}/streamate")
+    combined_df = existing_df.unionByName(
+        df).dropDuplicates(['studioId', 'date'])
 except Exception as e:
     # Si el archivo no existe, usar solo los nuevos datos
-    combined_df = df_new
+    combined_df = df
 
-# Guardar datos combinados en S3 en formato Parquet, particionados por processing_date
-combined_df.write.mode('overwrite').partitionBy(
-    'processing_date').parquet(output_path)
+# Guardar datos combinados en S3 en formato Parquet
+combined_df.write.mode('overwrite').parquet(output_path)
 
 # Finalizar el trabajo
 job.commit()

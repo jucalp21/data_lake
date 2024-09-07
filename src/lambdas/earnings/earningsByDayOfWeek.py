@@ -14,11 +14,7 @@ def lambda_handler(event, context):
     if event['httpMethod'] == 'OPTIONS':
         return {
             'statusCode': 200,
-            'headers': {
-                'Access-Control-Allow-Origin': '*',
-                'Access-Control-Allow-Methods': 'POST, OPTIONS',
-                'Access-Control-Allow-Headers': 'Content-Type, Authorization'
-            },
+            'headers': headers,
             'body': json.dumps('Preflight OK')
         }
 
@@ -33,6 +29,9 @@ def lambda_handler(event, context):
 
     start_date = body.get('start_date')
     end_date = body.get('end_date')
+    city = body.get('city')
+    office = body.get('office')
+    artisticName = body.get('artisticName')
 
     if not start_date or not end_date:
         return {
@@ -51,6 +50,7 @@ def lambda_handler(event, context):
             'body': json.dumps('Formato de fecha inválido. Use YYYY-MM-DD.')
         }
 
+    # Construir la consulta con los filtros opcionales
     query = f"""
         SELECT  CASE 
                     WHEN day_of_week(CAST(eap.date AS DATE)) = 1 THEN 'Lun'
@@ -71,8 +71,20 @@ def lambda_handler(event, context):
         INNER JOIN  "data_lake_db"."bronze_users" us
             ON (eap.emailaddress = us.streamateuser OR eap.emailaddress = us.jasminuser)
         WHERE   CAST(eap.date AS DATE) BETWEEN DATE('{start_date}') AND DATE('{end_date}')
-        GROUP BY    day_of_week(CAST(eap.date AS DATE))
-        ORDER BY    day_of_week(CAST(eap.date AS DATE)) ASC;
+    """
+
+    if city:
+        query += f" AND us.city = '{city.replace('\'', '\'\'')}'"
+    
+    if office:
+        query += f" AND us.office = '{office.replace('\'', '\'\'')}'"
+
+    if artisticName:
+        query += f" AND us.artisticName = '{artisticName.replace('\'', '\'\'')}'"
+
+    query += """
+        GROUP BY day_of_week(CAST(eap.date AS DATE))
+        ORDER BY day_of_week(CAST(eap.date AS DATE)) ASC;
     """
 
     athena_client = boto3.client('athena')

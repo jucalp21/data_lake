@@ -5,7 +5,6 @@ from datetime import datetime
 
 
 def lambda_handler(event, context):
-    # Agregar encabezados CORS
     headers = {
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Methods': 'POST, OPTIONS',
@@ -21,7 +20,7 @@ def lambda_handler(event, context):
 
     try:
         body = json.loads(event['body'])
-    except Exception as e:
+    except Exception:
         return {
             'statusCode': 400,
             'headers': headers,
@@ -30,12 +29,15 @@ def lambda_handler(event, context):
 
     start_date = body.get('start_date')
     end_date = body.get('end_date')
+    city = body.get('city')
+    office = body.get('office')
+    artisticName = body.get('artisticName')
 
     if not start_date or not end_date:
         return {
             'statusCode': 400,
             'headers': headers,
-            'body': json.dumps('Debe proporcionar start_date y end_date en el formato YYYY-MM-DD')
+            'body': json.dumps('Debe proporcionar al menos start_date y end_date en el formato YYYY-MM-DD')
         }
 
     try:
@@ -49,10 +51,24 @@ def lambda_handler(event, context):
         }
 
     query = f"""
-        SELECT  eap.date,
+    SELECT      eap.date,
                 SUM(eap.payableamount) AS totalAmount
-        FROM    "data_lake_db"."silver_earnings_by_performer" eap
-        WHERE   CAST(eap.date AS DATE) BETWEEN DATE('{start_date}') AND DATE('{end_date}')
+    FROM        "data_lake_db"."silver_earnings_by_performer" eap
+    INNER JOIN  "data_lake_db"."bronze_users" us
+        ON      (eap.emailaddress = us.streamateuser OR eap.emailaddress = us.jasminuser)
+    WHERE       CAST(eap.date AS DATE) BETWEEN DATE('{start_date}') AND DATE('{end_date}')
+    """
+
+    if city:
+        query += f" AND us.city = '{city.replace('\'', '\'\'')}'"
+    
+    if office:
+        query += f" AND us.office = '{office.replace('\'', '\'\'')}'"
+
+    if artisticName:
+        query += f" AND us.artisticName = '{artisticName.replace('\'', '\'\'')}'"
+
+    query += """
         GROUP BY eap.date
         ORDER BY eap.date;
     """
@@ -70,9 +86,10 @@ def lambda_handler(event, context):
 
         query_execution_id = response['QueryExecutionId']
 
-        while True:
-            query_status = athena_client.get_query_execution(
-                QueryExecutionId=query_execution_id)
+        max_wait_time = 60
+        waited_time = 0
+        while waited_time < max_wait_time:
+            query_status = athena_client.get_query_execution(QueryExecutionId=query_execution_id)
             query_state = query_status['QueryExecution']['Status']['State']
 
             if query_state == 'SUCCEEDED':
@@ -81,14 +98,21 @@ def lambda_handler(event, context):
                 return {
                     'statusCode': 500,
                     'headers': headers,
-                    'body': json.dumps(f"Query {query_state} with reason: {query_status['QueryExecution']['Status']['StateChangeReason']}")
+                    'body': json.dumps(f"Query {query_state} con motivo: {query_status['QueryExecution']['Status']['StateChangeReason']}")
                 }
             time.sleep(2)
+            waited_time += 2
 
-        result = athena_client.get_query_results(
-            QueryExecutionId=query_execution_id)
+        if waited_time >= max_wait_time:
+            return {
+                'statusCode': 500,
+                'headers': headers,
+                'body': json.dumps('Timeout al esperar que la consulta se ejecute.')
+            }
 
+        result = athena_client.get_query_results(QueryExecutionId=query_execution_id)
         rows = result['ResultSet']['Rows']
+        
         output = []
         for row in rows[1:]:
             output.append({

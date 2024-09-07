@@ -5,11 +5,26 @@ from datetime import datetime
 
 
 def lambda_handler(event, context):
+    # Agregar encabezados CORS
+    headers = {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization'
+    }
+
+    if event['httpMethod'] == 'OPTIONS':
+        return {
+            'statusCode': 200,
+            'headers': headers,
+            'body': json.dumps('Preflight OK')
+        }
+
     try:
         body = json.loads(event['body'])
     except Exception as e:
         return {
             'statusCode': 400,
+            'headers': headers,
             'body': json.dumps('Error al procesar el cuerpo de la solicitud.')
         }
 
@@ -19,6 +34,7 @@ def lambda_handler(event, context):
     if not start_date or not end_date:
         return {
             'statusCode': 400,
+            'headers': headers,
             'body': json.dumps('Debe proporcionar start_date y end_date en el formato YYYY-MM-DD')
         }
 
@@ -28,6 +44,7 @@ def lambda_handler(event, context):
     except ValueError:
         return {
             'statusCode': 400,
+            'headers': headers,
             'body': json.dumps('Formato de fecha inválido. Use YYYY-MM-DD.')
         }
 
@@ -44,40 +61,50 @@ def lambda_handler(event, context):
     database = 'data_lake_db'
     output_location = 's3://data-lake-demo/gold/'
 
-    response = athena_client.start_query_execution(
-        QueryString=query,
-        QueryExecutionContext={'Database': database},
-        ResultConfiguration={'OutputLocation': output_location}
-    )
+    try:
+        response = athena_client.start_query_execution(
+            QueryString=query,
+            QueryExecutionContext={'Database': database},
+            ResultConfiguration={'OutputLocation': output_location}
+        )
 
-    query_execution_id = response['QueryExecutionId']
+        query_execution_id = response['QueryExecutionId']
 
-    while True:
-        query_status = athena_client.get_query_execution(
+        while True:
+            query_status = athena_client.get_query_execution(
+                QueryExecutionId=query_execution_id)
+            query_state = query_status['QueryExecution']['Status']['State']
+
+            if query_state == 'SUCCEEDED':
+                break
+            elif query_state in ['FAILED', 'CANCELLED']:
+                return {
+                    'statusCode': 500,
+                    'headers': headers,
+                    'body': json.dumps(f"Query {query_state} with reason: {query_status['QueryExecution']['Status']['StateChangeReason']}")
+                }
+            time.sleep(2)
+
+        result = athena_client.get_query_results(
             QueryExecutionId=query_execution_id)
-        query_state = query_status['QueryExecution']['Status']['State']
 
-        if query_state == 'SUCCEEDED':
-            break
-        elif query_state in ['FAILED', 'CANCELLED']:
-            return {
-                'statusCode': 500,
-                'body': json.dumps(f"Query {query_state} with reason: {query_status['QueryExecution']['Status']['StateChangeReason']}")
-            }
-        time.sleep(2)
+        rows = result['ResultSet']['Rows']
+        output = []
+        for row in rows[1:]:
+            output.append({
+                'date': row['Data'][0]['VarCharValue'],
+                'totalAmount': row['Data'][1]['VarCharValue'],
+            })
 
-    result = athena_client.get_query_results(
-        QueryExecutionId=query_execution_id)
+        return {
+            'statusCode': 200,
+            'headers': headers,
+            'body': json.dumps(output)
+        }
 
-    rows = result['ResultSet']['Rows']
-    output = []
-    for row in rows[1:]:
-        output.append({
-            'date': row['Data'][0]['VarCharValue'],
-            'totalAmount': row['Data'][1]['VarCharValue'],
-        })
-
-    return {
-        'statusCode': 200,
-        'body': json.dumps(output)
-    }
+    except Exception as e:
+        return {
+            'statusCode': 500,
+            'headers': headers,
+            'body': json.dumps(f"Error al ejecutar la consulta: {str(e)}")
+        }

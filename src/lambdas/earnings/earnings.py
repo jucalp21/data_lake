@@ -29,9 +29,7 @@ def lambda_handler(event, context):
 
     start_date = body.get('start_date')
     end_date = body.get('end_date')
-    city = body.get('city')
-    office = body.get('office')
-    artisticName = body.get('artisticName')
+    locations = body.get('locations')
 
     if not start_date or not end_date:
         return {
@@ -50,6 +48,18 @@ def lambda_handler(event, context):
             'body': json.dumps('Formato de fecha inválido. Use YYYY-MM-DD.')
         }
 
+    cities = []
+    offices = []
+
+    if locations:
+        for loc in locations:
+            if 'officeName' in loc and loc['officeName']:
+                offices.append(loc['officeName'].replace(
+                    "'", "''"))
+            elif 'cityName' in loc and loc['cityName']:
+                cities.append(loc['cityName'].replace(
+                    "'", "''"))
+
     query = f"""
     SELECT      eap.date,
                 SUM(eap.payableamount) AS totalAmount
@@ -59,14 +69,17 @@ def lambda_handler(event, context):
     WHERE       CAST(eap.date AS DATE) BETWEEN DATE('{start_date}') AND DATE('{end_date}')
     """
 
-    if city:
-        query += f" AND us.city = '{city.replace('\'', '\'\'')}'"
-    
-    if office:
-        query += f" AND us.office = '{office.replace('\'', '\'\'')}'"
+    if cities or offices:
+        filters = []
+        if cities:
+            cities_str = ', '.join([f"'{city}'" for city in cities])
+            filters.append(f"us.city IN ({cities_str})")
 
-    if artisticName:
-        query += f" AND us.artisticName = '{artisticName.replace('\'', '\'\'')}'"
+        if offices:
+            offices_str = ', '.join([f"'{office}'" for office in offices])
+            filters.append(f"us.office IN ({offices_str})")
+
+        query += f" AND ({' OR '.join(filters)})"
 
     query += """
         GROUP BY eap.date
@@ -89,7 +102,8 @@ def lambda_handler(event, context):
         max_wait_time = 60
         waited_time = 0
         while waited_time < max_wait_time:
-            query_status = athena_client.get_query_execution(QueryExecutionId=query_execution_id)
+            query_status = athena_client.get_query_execution(
+                QueryExecutionId=query_execution_id)
             query_state = query_status['QueryExecution']['Status']['State']
 
             if query_state == 'SUCCEEDED':
@@ -110,9 +124,10 @@ def lambda_handler(event, context):
                 'body': json.dumps('Timeout al esperar que la consulta se ejecute.')
             }
 
-        result = athena_client.get_query_results(QueryExecutionId=query_execution_id)
+        result = athena_client.get_query_results(
+            QueryExecutionId=query_execution_id)
         rows = result['ResultSet']['Rows']
-        
+
         output = []
         for row in rows[1:]:
             output.append({

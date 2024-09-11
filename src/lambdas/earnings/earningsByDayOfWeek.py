@@ -20,7 +20,7 @@ def lambda_handler(event, context):
 
     try:
         body = json.loads(event['body'])
-    except Exception as e:
+    except Exception:
         return {
             'statusCode': 400,
             'headers': headers,
@@ -29,9 +29,7 @@ def lambda_handler(event, context):
 
     start_date = body.get('start_date')
     end_date = body.get('end_date')
-    city = body.get('city')
-    office = body.get('office')
-    artisticName = body.get('artisticName')
+    locations = body.get('locations')
 
     if not start_date or not end_date:
         return {
@@ -50,41 +48,49 @@ def lambda_handler(event, context):
             'body': json.dumps('Formato de fecha inválido. Use YYYY-MM-DD.')
         }
 
-    # Construir la consulta con los filtros opcionales
+    filters_main = []
+    filters_inner = []
+
+    if locations:
+        for loc in locations:
+            if 'officeName' in loc and loc['officeName']:
+                office_filter = loc['officeName'].replace("'", "''")
+                filters_main.append(f"us.office = '{office_filter}'")
+                filters_inner.append(f"us_inner.office = '{office_filter}'")
+            elif 'cityName' in loc and loc['cityName']:
+                city_filter = loc['cityName'].replace("'", "''")
+                filters_main.append(f"us.city = '{city_filter}'")
+                filters_inner.append(f"us_inner.city = '{city_filter}'")
+
+    filters_main_str = f" AND ({' OR '.join(filters_main)})" if filters_main else ""
+    filters_inner_str = f" AND ({' OR '.join(filters_inner)})" if filters_inner else ""
+
     query = f"""
         SELECT  CASE 
-                    WHEN day_of_week(CAST(eap.date AS DATE)) = 1 THEN 'Lun'
-                    WHEN day_of_week(CAST(eap.date AS DATE)) = 2 THEN 'Mar'
-                    WHEN day_of_week(CAST(eap.date AS DATE)) = 3 THEN 'Mié'
-                    WHEN day_of_week(CAST(eap.date AS DATE)) = 4 THEN 'Jue'
-                    WHEN day_of_week(CAST(eap.date AS DATE)) = 5 THEN 'Vie'
-                    WHEN day_of_week(CAST(eap.date AS DATE)) = 6 THEN 'Sáb'
-                    WHEN day_of_week(CAST(eap.date AS DATE)) = 7 THEN 'Dom'
+                    WHEN day_of_week(CAST(eap."date" AS DATE)) = 1 THEN 'Lun'
+                    WHEN day_of_week(CAST(eap."date" AS DATE)) = 2 THEN 'Mar'
+                    WHEN day_of_week(CAST(eap."date" AS DATE)) = 3 THEN 'Mié'
+                    WHEN day_of_week(CAST(eap."date" AS DATE)) = 4 THEN 'Jue'
+                    WHEN day_of_week(CAST(eap."date" AS DATE)) = 5 THEN 'Vie'
+                    WHEN day_of_week(CAST(eap."date" AS DATE)) = 6 THEN 'Sáb'
+                    WHEN day_of_week(CAST(eap."date" AS DATE)) = 7 THEN 'Dom'
                 END AS DOW,
                 ROUND(SUM(eap.payableamount), 2) AS TOTAL,
-                ROUND((SUM(eap.payableamount) / (SELECT SUM(eap_inner.payableamount) 
-                                                 FROM "data_lake_db"."silver_earnings_by_performer" eap_inner
-                                                 INNER JOIN "data_lake_db"."bronze_users" us_inner 
-                                                 ON (eap_inner.emailaddress = us_inner.streamateuser OR eap_inner.emailaddress = us_inner.jasminuser))
+                ROUND((SUM(eap.payableamount) / 
+                      (SELECT SUM(eap_inner.payableamount) 
+                       FROM "data_lake_db"."silver_earnings_by_performer" eap_inner
+                       INNER JOIN "data_lake_db"."bronze_users" us_inner 
+                       ON (eap_inner.emailaddress = us_inner.streamateuser OR eap_inner.emailaddress = us_inner.jasminuser)
+                       WHERE CAST(eap_inner."date" AS DATE) BETWEEN DATE('{start_date}') AND DATE('{end_date}')
+                       {filters_inner_str})
                 ) * 100, 2) AS percentage
         FROM        "data_lake_db"."silver_earnings_by_performer" eap
         INNER JOIN  "data_lake_db"."bronze_users" us
             ON (eap.emailaddress = us.streamateuser OR eap.emailaddress = us.jasminuser)
-        WHERE   CAST(eap.date AS DATE) BETWEEN DATE('{start_date}') AND DATE('{end_date}')
-    """
-
-    if city:
-        query += f" AND us.city = '{city.replace('\'', '\'\'')}'"
-    
-    if office:
-        query += f" AND us.office = '{office.replace('\'', '\'\'')}'"
-
-    if artisticName:
-        query += f" AND us.artisticName = '{artisticName.replace('\'', '\'\'')}'"
-
-    query += """
-        GROUP BY day_of_week(CAST(eap.date AS DATE))
-        ORDER BY day_of_week(CAST(eap.date AS DATE)) ASC;
+        WHERE   CAST(eap."date" AS DATE) BETWEEN DATE('{start_date}') AND DATE('{end_date}')
+        {filters_main_str}
+        GROUP BY day_of_week(CAST(eap."date" AS DATE))
+        ORDER BY day_of_week(CAST(eap."date" AS DATE)) ASC;
     """
 
     athena_client = boto3.client('athena')
@@ -100,7 +106,11 @@ def lambda_handler(event, context):
 
         query_execution_id = response['QueryExecutionId']
 
-        while True:
+        max_wait_time = 60
+        waited_time = 0
+        sleep_time = 2
+
+        while waited_time < max_wait_time:
             query_status = athena_client.get_query_execution(
                 QueryExecutionId=query_execution_id)
             query_state = query_status['QueryExecution']['Status']['State']
@@ -111,9 +121,18 @@ def lambda_handler(event, context):
                 return {
                     'statusCode': 500,
                     'headers': headers,
-                    'body': json.dumps(f"Query {query_state} with reason: {query_status['QueryExecution']['Status']['StateChangeReason']}")
+                    'body': json.dumps(f"Query {query_state} con motivo: {query_status['QueryExecution']['Status']['StateChangeReason']}")
                 }
-            time.sleep(5)
+
+            time.sleep(sleep_time)
+            waited_time += sleep_time
+
+        if waited_time >= max_wait_time:
+            return {
+                'statusCode': 500,
+                'headers': headers,
+                'body': json.dumps('Timeout al esperar que la consulta se ejecute.')
+            }
 
         result = athena_client.get_query_results(
             QueryExecutionId=query_execution_id)

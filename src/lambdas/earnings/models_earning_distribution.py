@@ -30,7 +30,7 @@ def lambda_handler(event, context):
     start_date = body.get('start_date')
     end_date = body.get('end_date')
     locations = body.get('locations')
-    sortKey = body.get('sortKey')
+    sort_key = body.get('sort_key', 'DESC')
 
     if not start_date or not end_date:
         return {
@@ -66,7 +66,7 @@ def lambda_handler(event, context):
         WITH ranked_artists AS (
             SELECT      us.artisticname,
                         ROUND(SUM(eap.payableAmount), 2) AS total_earnings,
-                        ROW_NUMBER() OVER (ORDER BY SUM(eap.payableAmount) DESC) AS ranking
+                        ROW_NUMBER() OVER (ORDER BY SUM(eap.payableAmount) {sort_key}) AS ranking
             FROM        "data_lake_db"."silver_earnings_by_performer" eap
             INNER JOIN  "data_lake_db"."bronze_users" us
                 ON (eap.emailaddress = us.streamateuser OR eap.emailaddress = us.jasminuser)
@@ -78,7 +78,7 @@ def lambda_handler(event, context):
                     ROUND(SUM(total_earnings), 2) AS total_earnings
         FROM        ranked_artists
         GROUP BY    CASE WHEN ranking <= 5 THEN artisticname ELSE 'General' END
-        ORDER BY    total_earnings DESC;
+        ORDER BY    total_earnings {sort_key};
     """
 
     athena_client = boto3.client('athena')

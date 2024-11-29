@@ -44,7 +44,6 @@ def lambda_handler(event, context):
     page = int(body.get('page', 1))
     limit = int(body.get('limit', 10))
     user_selected = body.get('userSelected')
-    is_enabled = body.get('status')
 
     if not start_date or not end_date or not api_authorization:
         return {
@@ -190,11 +189,6 @@ def lambda_handler(event, context):
                 'headers': headers,
                 'body': json.dumps(f"Error al consultar el API: {str(api_error)}")
             }
-
-        if is_enabled is not None:
-            is_enabled_value = True if is_enabled == "enabled" else False
-            models_data = {user_id: model for user_id, model in models_data.items(
-            ) if model.get("isEnable") == is_enabled_value}
 
         output_dict = {}
         for row in rows[1:]:

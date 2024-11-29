@@ -4,7 +4,6 @@ import time
 import urllib3
 from datetime import datetime
 
-# Inicializar el cliente de urllib3
 http = urllib3.PoolManager()
 
 
@@ -54,7 +53,6 @@ def lambda_handler(event, context):
         }
 
     try:
-        # Usamos urllib3 para hacer la petición HTTP
         response = http.request(
             'GET',
             "https://1astats.omgworldwidegroup.com/api/v1/user",
@@ -79,7 +77,7 @@ def lambda_handler(event, context):
     user_ids = []
     for user in users_data.get('users', []):
         if (status == 'enabled' and user['isEnable']) or (status == 'disabled' and not user['isEnable']):
-            user_ids.append(user['streamateUser'])
+            user_ids.append(user['_id'])
 
     if not user_ids:
         return {
@@ -88,8 +86,11 @@ def lambda_handler(event, context):
             'body': json.dumps(f'No users found with status "{status}".')
         }
 
-    # Aquí corregimos el error de sintaxis en el f-string
-    user_filter = f" AND (us.streamateuser IN ({', '.join([f'\'{user_id}\'' for user_id in user_ids])}) OR us.jasminuser IN ({', '.join([f'\'{user_id}\'' for user_id in user_ids])}))"
+    user_selected = body.get('userSelected')
+    if user_selected:
+        user_filter = f" AND us._id = '{user_selected}'"
+    else:
+        user_filter = f" AND (us._id IN ({', '.join([f'\'{user_id}\'' for user_id in user_ids])}))"
 
     query = f"""
     WITH current_value AS (

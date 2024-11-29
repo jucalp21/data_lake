@@ -43,6 +43,8 @@ def lambda_handler(event, context):
     api_authorization = body.get('authorization')
     page = int(body.get('page', 1))
     limit = int(body.get('limit', 10))
+    user_selected = body.get('userSelected')
+    is_enabled = body.get('status')
 
     if not start_date or not end_date or not api_authorization:
         return {
@@ -52,13 +54,20 @@ def lambda_handler(event, context):
         }
 
     try:
-        datetime.strptime(start_date, '%Y-%m-%d')
-        datetime.strptime(end_date, '%Y-%m-%d')
+        start_date_obj = datetime.strptime(start_date, '%Y-%m-%d')
+        end_date_obj = datetime.strptime(end_date, '%Y-%m-%d')
     except ValueError:
         return {
             'statusCode': 400,
             'headers': headers,
             'body': json.dumps('Formato de fecha inválido. Use YYYY-MM-DD.')
+        }
+
+    if start_date_obj > end_date_obj:
+        return {
+            'statusCode': 400,
+            'headers': headers,
+            'body': json.dumps('start_date no puede ser posterior a end_date.')
         }
 
     filters_main = []
@@ -71,7 +80,12 @@ def lambda_handler(event, context):
                 city_filter = loc['cityName'].replace("'", "''")
                 filters_main.append(f"us.city = '{city_filter}'")
 
+    user_filter = ""
+    if user_selected:
+        user_filter = f" AND us._id = '{user_selected}'"
+
     filters_main_str = f" AND ({' OR '.join(filters_main)})" if filters_main else ""
+    query_filters = filters_main_str + user_filter
 
     query = f"""
         WITH earnings_data AS (
@@ -92,7 +106,7 @@ def lambda_handler(event, context):
             INNER JOIN "data_lake_db"."bronze_users" bu
                 ON eap.emailaddress = bu.jasminuser OR eap.emailaddress = bu.streamateuser
             WHERE CAST(eap."date" AS DATE) BETWEEN DATE('{start_date}') AND DATE('{end_date}')
-            {filters_main_str}
+            {query_filters}
             GROUP BY bu.artisticname, bu.jasminuser, bu.streamateuser, bu.city, bu.office, bu._id,
                     CASE
                         WHEN eap.emailaddress = bu.jasminuser THEN 'jasmin'
@@ -177,13 +191,20 @@ def lambda_handler(event, context):
                 'body': json.dumps(f"Error al consultar el API: {str(api_error)}")
             }
 
-        # Consolidar los datos por _id
+        if is_enabled is not None:
+            is_enabled_value = True if is_enabled == "enabled" else False
+            models_data = {user_id: model for user_id, model in models_data.items(
+            ) if model.get("isEnable") == is_enabled_value}
+
         output_dict = {}
         for row in rows[1:]:
             artistic_name = row['Data'][0].get('VarCharValue', None)
             _id = row['Data'][4].get('VarCharValue', None)
 
             if not artistic_name or not _id:
+                continue
+
+            if _id not in models_data:
                 continue
 
             if _id not in output_dict:
@@ -213,8 +234,8 @@ def lambda_handler(event, context):
                 data[platform] = platform_data
             data["total"] += platform_data["sales"]
 
-        # Convertir a lista y paginar
         output = list(output_dict.values())
+
         start_index = (page - 1) * limit
         end_index = start_index + limit
         paginated_output = output[start_index:end_index]

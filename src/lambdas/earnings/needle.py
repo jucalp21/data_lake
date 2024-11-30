@@ -31,10 +31,12 @@ def lambda_handler(event, context):
         }
 
     authorization = body.get('authorization')
-    status = body.get('status', 'enabled')
 
     start_date = body.get('start_date')
     end_date = body.get('end_date')
+    locations = body.get('locations')  # Locations filter (city and office)
+    user_selected = body.get('userSelected')
+
     try:
         datetime.strptime(start_date, '%Y-%m-%d')
         datetime.strptime(end_date, '%Y-%m-%d')
@@ -74,23 +76,31 @@ def lambda_handler(event, context):
             'body': json.dumps(f"Error fetching external API: {str(e)}")
         }
 
-    user_ids = []
-    for user in users_data.get('users', []):
-        if (status == 'enabled' and user['isEnable']) or (status == 'disabled' and not user['isEnable']):
-            user_ids.append(user['_id'])
+    user_ids = [user['_id'] for user in users_data.get('users', [])]
 
     if not user_ids:
         return {
             'statusCode': 200,
             'headers': headers,
-            'body': json.dumps(f'No users found with status "{status}".')
+            'body': json.dumps('No users found.')
         }
 
-    user_selected = body.get('userSelected')
     if user_selected:
         user_filter = f" AND us._id = '{user_selected}'"
     else:
         user_filter = f" AND (us._id IN ({', '.join([f'\'{user_id}\'' for user_id in user_ids])}))"
+
+    filters_main = []
+    if locations:
+        for loc in locations:
+            if 'officeName' in loc and loc['officeName']:
+                office_filter = loc['officeName'].replace("'", "''")
+                filters_main.append(f"us.office = '{office_filter}'")
+            elif 'cityName' in loc and loc['cityName']:
+                city_filter = loc['cityName'].replace("'", "''")
+                filters_main.append(f"us.city = '{city_filter}'")
+
+    filters_main_str = f" AND ({' OR '.join(filters_main)})" if filters_main else ""
 
     query = f"""
     WITH current_value AS (
@@ -104,6 +114,7 @@ def lambda_handler(event, context):
         WHERE 
             CAST(eap."date" AS DATE) BETWEEN DATE('{start_date}') AND DATE('{end_date}')
             {user_filter}
+            {filters_main_str}
     ),
     historical_values AS (
         SELECT 
@@ -117,6 +128,7 @@ def lambda_handler(event, context):
             CAST(eap."date" AS DATE) BETWEEN 
                 DATE_ADD('day', -30, DATE('{start_date}')) AND DATE_ADD('day', -30, DATE('{end_date}'))
             {user_filter}
+            {filters_main_str}
         GROUP BY 
             EXTRACT(YEAR FROM CAST(eap."date" AS DATE)), EXTRACT(MONTH FROM CAST(eap."date" AS DATE))
     )

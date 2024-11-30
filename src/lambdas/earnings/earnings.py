@@ -30,6 +30,7 @@ def lambda_handler(event, context):
     start_date = body.get('start_date')
     end_date = body.get('end_date')
     locations = body.get('locations')
+    user_selected = body.get('userSelected')
 
     if not start_date or not end_date:
         return {
@@ -54,11 +55,9 @@ def lambda_handler(event, context):
     if locations:
         for loc in locations:
             if 'officeName' in loc and loc['officeName']:
-                offices.append(loc['officeName'].replace(
-                    "'", "''"))
+                offices.append(loc['officeName'].replace("'", "''"))
             elif 'cityName' in loc and loc['cityName']:
-                cities.append(loc['cityName'].replace(
-                    "'", "''"))
+                cities.append(loc['cityName'].replace("'", "''"))
 
     query = f"""
     SELECT      eap.date,
@@ -80,6 +79,9 @@ def lambda_handler(event, context):
             filters.append(f"us.office IN ({offices_str})")
 
         query += f" AND ({' OR '.join(filters)})"
+
+    if user_selected:
+        query += f" AND us._id = '{user_selected}'"
 
     query += """
         GROUP BY eap.date

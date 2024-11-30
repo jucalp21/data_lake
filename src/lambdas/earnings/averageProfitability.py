@@ -72,9 +72,9 @@ def lambda_handler(event, context):
            base.transmissionType AS label,
            COALESCE(AVG(earnings.payableamount), 0) AS value,
            CASE base.transmissionType
-               WHEN 'Toy' THEN '#BD0909'
-               WHEN 'Privada' THEN '#EB8326'
-               WHEN 'Otros' THEN '#C9370F'
+               WHEN 'Toy' THEN '#219E0D'
+               WHEN 'Privada' THEN '#21619A'
+               WHEN 'Otros' THEN '#EB933D'
                ELSE '#000000'
            END AS color
     FROM (

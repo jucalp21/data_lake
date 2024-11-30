@@ -30,7 +30,8 @@ def lambda_handler(event, context):
     start_date = body.get('start_date')
     end_date = body.get('end_date')
     locations = body.get('locations')
-    sort_key = body.get('sort_key', 'DESC')
+    user_selected = body.get('userSelected')
+    sort_key = body.get('sort_key', 'DESC').upper()
 
     if not start_date or not end_date:
         return {
@@ -49,6 +50,13 @@ def lambda_handler(event, context):
             'body': json.dumps('Formato de fecha inválido. Use YYYY-MM-DD.')
         }
 
+    if sort_key not in ['ASC', 'DESC']:
+        return {
+            'statusCode': 400,
+            'headers': headers,
+            'body': json.dumps('sort_key debe ser "ASC" o "DESC".')
+        }
+
     filters_main = []
 
     if locations:
@@ -59,6 +67,10 @@ def lambda_handler(event, context):
             elif 'cityName' in loc and loc['cityName']:
                 city_filter = loc['cityName'].replace("'", "''")
                 filters_main.append(f"us.city = '{city_filter}'")
+
+    if user_selected:
+        user_selected = user_selected.replace("'", "''")
+        filters_main.append(f"us._id = '{user_selected}'")
 
     filters_main_str = f" AND ({' OR '.join(filters_main)})" if filters_main else ""
 

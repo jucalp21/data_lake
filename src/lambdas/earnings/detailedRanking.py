@@ -107,7 +107,7 @@ def lambda_handler(event, context):
                 ON eap.emailaddress = bu.jasminuser OR eap.emailaddress = bu.streamateuser
             WHERE CAST(eap."date" AS DATE) BETWEEN DATE('{start_date}') AND DATE('{end_date}')
             {query_filters}
-            GROUP BY bu.artisticname, bu.jasminuser, bu.streamateuser, bu.city, bu.office, bu._id,
+            GROUP BY bu.artisticname, bu.jasminuser, bu.streamateuser, bu.city, bu.office, bu.room, bu._id,
                     CASE
                         WHEN eap.emailaddress = bu.jasminuser THEN 'jasmin'
                         WHEN eap.emailaddress = bu.streamateuser THEN 'streamate'

@@ -30,6 +30,7 @@ def lambda_handler(event, context):
     start_date = body.get('start_date')
     end_date = body.get('end_date')
     locations = body.get('locations')
+    user_selected = body.get('userSelected')
 
     if not start_date or not end_date:
         return {
@@ -58,6 +59,11 @@ def lambda_handler(event, context):
             elif 'cityName' in loc and loc['cityName']:
                 city_filter = loc['cityName'].replace("'", "''")
                 filters_main.append(f"us.city = '{city_filter}'")
+
+    if user_selected:
+        user_selected_filter = user_selected.replace(
+            "'", "''")
+        filters_main.append(f"us._id = '{user_selected_filter}'")
 
     filters_main_str = f" AND ({' OR '.join(filters_main)})" if filters_main else ""
 
@@ -95,7 +101,7 @@ def lambda_handler(event, context):
             WHEN base.transmissionType = 'Otros' THEN 3
             ELSE 4
         END;
-"""
+    """
 
     athena_client = boto3.client('athena')
     database = 'data_lake_db'
@@ -147,11 +153,11 @@ def lambda_handler(event, context):
                 'statusCode': 200,
                 'headers': headers,
                 'body': json.dumps([
-                    {"id": "Toy", "label": "Toy", "value": 0.0, "color": "#BD0909"},
+                    {"id": "Toy", "label": "Toy", "value": 0.0, "color": "#219E0D"},
                     {"id": "Privada", "label": "Privada",
-                        "value": 0.0, "color": "#EB8326"},
+                        "value": 0.0, "color": "#21619A"},
                     {"id": "Otros", "label": "Otros",
-                        "value": 0.0, "color": "#C9370F"}
+                        "value": 0.0, "color": "#EB933D"}
                 ])
             }
 

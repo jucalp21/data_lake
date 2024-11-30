@@ -74,14 +74,14 @@ def lambda_handler(event, context):
         for loc in locations:
             if 'officeName' in loc and loc['officeName']:
                 office_filter = loc['officeName'].replace("'", "''")
-                filters_main.append(f"us.office = '{office_filter}'")
+                filters_main.append(f"bu.office = '{office_filter}'")
             elif 'cityName' in loc and loc['cityName']:
                 city_filter = loc['cityName'].replace("'", "''")
-                filters_main.append(f"us.city = '{city_filter}'")
+                filters_main.append(f"bu.city = '{city_filter}'")
 
     user_filter = ""
     if user_selected:
-        user_filter = f" AND us._id = '{user_selected}'"
+        user_filter = f" AND bu._id = '{user_selected}'"
 
     filters_main_str = f" AND ({' OR '.join(filters_main)})" if filters_main else ""
     query_filters = filters_main_str + user_filter
@@ -94,6 +94,7 @@ def lambda_handler(event, context):
                 bu.streamateuser,
                 bu.city,
                 bu.office,
+                bu.room,
                 bu._id,
                 CASE
                     WHEN eap.emailaddress = bu.jasminuser THEN 'jasmin'
@@ -117,6 +118,7 @@ def lambda_handler(event, context):
             jasminuser AS user,
             city,
             office,
+            room,
             _id,
             platform,
             sales,
@@ -193,7 +195,7 @@ def lambda_handler(event, context):
         output_dict = {}
         for row in rows[1:]:
             artistic_name = row['Data'][0].get('VarCharValue', None)
-            _id = row['Data'][4].get('VarCharValue', None)
+            _id = row['Data'][5].get('VarCharValue', None)
 
             if not artistic_name or not _id:
                 continue
@@ -210,6 +212,7 @@ def lambda_handler(event, context):
                         "role": "model",
                         "city": row['Data'][2].get('VarCharValue', None),
                         "office": row['Data'][3].get('VarCharValue', None),
+                        "room": row['Data'][4].get('VarCharValue', None),
                         "picture": models_data.get(_id, {}).get("picture", None)
                     },
                     "jasmin": {},
@@ -218,11 +221,11 @@ def lambda_handler(event, context):
                 }
 
             data = output_dict[_id]
-            platform = row['Data'][5].get('VarCharValue', None)
+            platform = row['Data'][6].get('VarCharValue', None)
             platform_data = {
-                "sales": float(row['Data'][6].get('VarCharValue', 0)),
-                "time": int(row['Data'][7].get('VarCharValue', 0)),
-                "percentage": float(row['Data'][8].get('VarCharValue', 0))
+                "sales": float(row['Data'][7].get('VarCharValue', 0)),
+                "time": int(row['Data'][8].get('VarCharValue', 0)),
+                "percentage": float(row['Data'][9].get('VarCharValue', 0))
             }
             if platform:
                 data[platform] = platform_data

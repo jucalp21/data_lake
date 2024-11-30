@@ -4,14 +4,33 @@ import time
 import urllib3
 from datetime import datetime
 
+# Función para realizar la consulta al API
+
 
 def fetch_api_data(api_url, api_authorization):
     http = urllib3.PoolManager()
     headers = {"Authorization": api_authorization}
     response = http.request("GET", api_url, headers=headers)
+
     if response.status != 200:
         raise Exception(f"Error al consultar el API: {response.status}")
+
     return json.loads(response.data.decode("utf-8"))
+
+# Función para obtener valores anidados, manejando nulos correctamente.
+
+
+def get_nested_value(data, key):
+    """
+    Esta función recupera el valor de una clave anidada, como jasmin.sales o total
+    """
+    keys = key.split('.')
+    for k in keys:
+        if isinstance(data, dict):
+            data = data.get(k, 0)  # Si no existe la clave, devolver 0
+        else:
+            return 0
+    return data if isinstance(data, (int, float)) else 0
 
 
 def lambda_handler(event, context):
@@ -44,6 +63,10 @@ def lambda_handler(event, context):
     page = int(body.get('page', 1))
     limit = int(body.get('limit', 10))
     user_selected = body.get('userSelected')
+
+    sort = body.get('sort', {})
+    sort_key = sort.get('key', 'total')
+    sort_value = sort.get('value', 'desc')
 
     if not start_date or not end_date or not api_authorization:
         return {
@@ -233,10 +256,24 @@ def lambda_handler(event, context):
 
         output = list(output_dict.values())
 
-        start_index = (page - 1) * limit
-        end_index = start_index + limit
-        paginated_output = output[start_index:end_index]
-        has_more = end_index < len(output)
+        if sort_key:
+            sort_field_mapping = {
+                "salesJasmin": "jasmin.sales",
+                "onlineJasmin": "jasmin.time",
+                "salesStreamate": "streamate.sales",
+                "onlineStreamate": "streamate.time",
+                "total": "total"
+            }
+
+            sort_field = sort_field_mapping.get(sort_key, None)
+            if sort_field:
+                reverse_order = sort_value != 'desc'
+                output.sort(key=lambda x: get_nested_value(
+                    x, sort_field), reverse=reverse_order)
+
+        start_idx = (page - 1) * limit
+        end_idx = start_idx + limit
+        paginated_results = output[start_idx:end_idx]
 
         return {
             'statusCode': 200,
@@ -245,8 +282,8 @@ def lambda_handler(event, context):
                 "page": page,
                 "limit": limit,
                 "total_results": len(output),
-                "hasMore": has_more,
-                "results": paginated_output
+                "hasMore": end_idx < len(output),
+                "results": paginated_results
             })
         }
 
@@ -254,5 +291,5 @@ def lambda_handler(event, context):
         return {
             'statusCode': 500,
             'headers': headers,
-            'body': json.dumps(f"Error al ejecutar la consulta: {str(e)}")
+            'body': json.dumps(f"Error interno del servidor: {str(e)}")
         }

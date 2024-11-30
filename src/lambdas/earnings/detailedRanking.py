@@ -4,8 +4,6 @@ import time
 import urllib3
 from datetime import datetime
 
-# Función para realizar la consulta al API
-
 
 def fetch_api_data(api_url, api_authorization):
     http = urllib3.PoolManager()
@@ -17,20 +15,22 @@ def fetch_api_data(api_url, api_authorization):
 
     return json.loads(response.data.decode("utf-8"))
 
-# Función para obtener valores anidados, manejando nulos correctamente.
-
 
 def get_nested_value(data, key):
     """
-    Esta función recupera el valor de una clave anidada, como jasmin.sales o total
+    Esta función recupera el valor de una clave anidada, como jasmin.sales o total.
+    Si el valor no es válido (por ejemplo, nulo o no numérico), se devuelve 0.
     """
     keys = key.split('.')
     for k in keys:
         if isinstance(data, dict):
-            data = data.get(k, 0)  # Si no existe la clave, devolver 0
+            data = data.get(k, None)
         else:
-            return 0
-    return data if isinstance(data, (int, float)) else 0
+            return None
+
+    if isinstance(data, (int, float)):
+        return data
+    return 0
 
 
 def lambda_handler(event, context):
@@ -245,9 +245,10 @@ def lambda_handler(event, context):
 
             data = output_dict[_id]
             platform = row['Data'][6].get('VarCharValue', None)
+
             platform_data = {
                 "sales": float(row['Data'][7].get('VarCharValue', 0)),
-                "time": int(row['Data'][8].get('VarCharValue', 0)),
+                "time": int(row['Data'][8].get('VarCharValue', 0)) if row['Data'][8].get('VarCharValue') else 0,
                 "percentage": float(row['Data'][9].get('VarCharValue', 0))
             }
             if platform:

@@ -60,14 +60,6 @@ def lambda_handler(event, context):
     filters_main_str = f" AND ({' OR '.join(filters_main)})" if filters_main else ""
 
     # Construcción de la consulta SQL
-    if platform == 'jasmin':
-        platform_table = 'silver_jasmin_model_performance'
-    elif platform == 'streamate':
-        platform_table = 'silver_streamate_model_performance'
-    else:
-        # Si no se especifica 'platform', tomamos ambas tablas
-        platform_table = 'silver_jasmin_model_performance UNION ALL SELECT * FROM silver_streamate_model_performance'
-
     query = f"""
     WITH current_value AS (
         SELECT 
@@ -78,7 +70,11 @@ def lambda_handler(event, context):
             "data_lake_db"."bronze_users" us 
             ON eap.emailaddress = us.streamateuser OR eap.emailaddress = us.jasminuser
         LEFT JOIN 
-            {platform_table} platform_data
+            CASE 
+                WHEN '{platform}' = 'jasmin' THEN "data_lake_db"."silver_jasmin_model_performance" jas
+                WHEN '{platform}' = 'streamate' THEN "data_lake_db"."silver_streamate_model_performance" stm
+                ELSE NULL
+            END AS platform_data
             ON platform_data._id = us._id
         WHERE 
             CAST(eap."date" AS DATE) BETWEEN DATE('{start_date}') AND DATE('{end_date}')
@@ -94,7 +90,11 @@ def lambda_handler(event, context):
             "data_lake_db"."bronze_users" us 
             ON eap.emailaddress = us.streamateuser OR eap.emailaddress = us.jasminuser
         LEFT JOIN 
-            {platform_table} platform_data
+            CASE 
+                WHEN '{platform}' = 'jasmin' THEN "data_lake_db"."silver_jasmin_model_performance" jas
+                WHEN '{platform}' = 'streamate' THEN "data_lake_db"."silver_streamate_model_performance" stm
+                ELSE NULL
+            END AS platform_data
             ON platform_data._id = us._id
         WHERE 
             CAST(eap."date" AS DATE) BETWEEN 

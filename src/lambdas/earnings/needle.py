@@ -1,10 +1,7 @@
 import boto3
 import json
 import time
-import urllib3
 from datetime import datetime
-
-http = urllib3.PoolManager()
 
 
 def lambda_handler(event, context):
@@ -30,12 +27,11 @@ def lambda_handler(event, context):
             'body': json.dumps('Invalid request body format.')
         }
 
-    authorization = body.get('authorization')
-
     start_date = body.get('start_date')
     end_date = body.get('end_date')
-    locations = body.get('locations')  # Locations filter (city and office)
+    locations = body.get('locations')
     user_selected = body.get('userSelected')
+    platform = body.get('platform')
 
     try:
         datetime.strptime(start_date, '%Y-%m-%d')
@@ -47,48 +43,9 @@ def lambda_handler(event, context):
             'body': json.dumps('Invalid date format. Use YYYY-MM-DD.')
         }
 
-    if authorization is None:
-        return {
-            'statusCode': 400,
-            'headers': headers,
-            'body': json.dumps('Authorization token is required.')
-        }
-
-    try:
-        response = http.request(
-            'GET',
-            "https://1astats.omgworldwidegroup.com/api/v1/user",
-            headers={"Authorization": authorization}
-        )
-
-        if response.status != 200:
-            return {
-                'statusCode': 500,
-                'headers': headers,
-                'body': json.dumps(f"Error fetching external API: {response.data}")
-            }
-
-        users_data = json.loads(response.data.decode('utf-8'))
-    except Exception as e:
-        return {
-            'statusCode': 500,
-            'headers': headers,
-            'body': json.dumps(f"Error fetching external API: {str(e)}")
-        }
-
-    user_ids = [user['_id'] for user in users_data.get('users', [])]
-
-    if not user_ids:
-        return {
-            'statusCode': 200,
-            'headers': headers,
-            'body': json.dumps('No users found.')
-        }
-
+    user_filter = ""
     if user_selected:
         user_filter = f" AND us._id = '{user_selected}'"
-    else:
-        user_filter = f" AND (us._id IN ({', '.join([f'\'{user_id}\'' for user_id in user_ids])}))"
 
     filters_main = []
     if locations:
@@ -102,6 +59,15 @@ def lambda_handler(event, context):
 
     filters_main_str = f" AND ({' OR '.join(filters_main)})" if filters_main else ""
 
+    # Construcción de la consulta SQL
+    if platform == 'jasmin':
+        platform_table = 'silver_jasmin_model_performance'
+    elif platform == 'streamate':
+        platform_table = 'silver_streamate_model_performance'
+    else:
+        # Si no se especifica 'platform', tomamos ambas tablas
+        platform_table = 'silver_jasmin_model_performance UNION ALL SELECT * FROM silver_streamate_model_performance'
+
     query = f"""
     WITH current_value AS (
         SELECT 
@@ -111,6 +77,9 @@ def lambda_handler(event, context):
         INNER JOIN 
             "data_lake_db"."bronze_users" us 
             ON eap.emailaddress = us.streamateuser OR eap.emailaddress = us.jasminuser
+        LEFT JOIN 
+            {platform_table} platform_data
+            ON platform_data._id = us._id
         WHERE 
             CAST(eap."date" AS DATE) BETWEEN DATE('{start_date}') AND DATE('{end_date}')
             {user_filter}
@@ -124,6 +93,9 @@ def lambda_handler(event, context):
         INNER JOIN 
             "data_lake_db"."bronze_users" us 
             ON eap.emailaddress = us.streamateuser OR eap.emailaddress = us.jasminuser
+        LEFT JOIN 
+            {platform_table} platform_data
+            ON platform_data._id = us._id
         WHERE 
             CAST(eap."date" AS DATE) BETWEEN 
                 DATE_ADD('day', -30, DATE('{start_date}')) AND DATE_ADD('day', -30, DATE('{end_date}'))
@@ -141,7 +113,7 @@ def lambda_handler(event, context):
 
     athena_client = boto3.client('athena')
     database = 'data_lake_db'
-    output_location = 's3://data-lake-demo/gold/'
+    output_location = 's3://data-lake-prd-og/gold/'
 
     try:
         response = athena_client.start_query_execution(

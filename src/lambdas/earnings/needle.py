@@ -59,50 +59,44 @@ def lambda_handler(event, context):
 
     filters_main_str = f" AND ({' OR '.join(filters_main)})" if filters_main else ""
 
-    # Construcción de la consulta SQL
+    if platform == 'jasmin':
+        platform_table = 'data_lake_pdn_og.silver_jasmin_model_performance'
+        union_str = ''
+    elif platform == 'streamate':
+        platform_table = 'data_lake_pdn_og.silver_streamate_model_performance'
+        union_str = ''
+    else:
+        platform_table = 'data_lake_pdn_og.silver_jasmin_model_performance'
+        union_str = ' UNION ALL SELECT * FROM data_lake_pdn_og.silver_streamate_model_performance'
+
     query = f"""
     WITH current_value AS (
         SELECT 
-            SUM(eap.payableamount) AS current_value
+            SUM(CAST(platform_data.total_earnings AS DECIMAL(10,2))) AS current_value
         FROM 
-            "data_lake_db"."silver_earnings_by_performer" eap
-        INNER JOIN 
-            "data_lake_db"."bronze_users" us 
-            ON eap.emailaddress = us.streamateuser OR eap.emailaddress = us.jasminuser
+            "data_lake_pdn_og"."bronze_users" us
         LEFT JOIN 
-            CASE 
-                WHEN '{platform}' = 'jasmin' THEN "data_lake_db"."silver_jasmin_model_performance" jas
-                WHEN '{platform}' = 'streamate' THEN "data_lake_db"."silver_streamate_model_performance" stm
-                ELSE NULL
-            END AS platform_data
-            ON platform_data._id = us._id
+            {platform_table} platform_data ON platform_data._id = us._id
         WHERE 
-            CAST(eap."date" AS DATE) BETWEEN DATE('{start_date}') AND DATE('{end_date}')
+            CAST(platform_data.date AS DATE) BETWEEN DATE('{start_date}') AND DATE('{end_date}')
             {user_filter}
             {filters_main_str}
     ),
     historical_values AS (
         SELECT 
-            SUM(eap.payableamount) AS total_earnings
+            SUM(CAST(platform_data.total_earnings AS DECIMAL(10,2))) AS total_earnings
         FROM 
-            "data_lake_db"."silver_earnings_by_performer" eap
-        INNER JOIN 
-            "data_lake_db"."bronze_users" us 
-            ON eap.emailaddress = us.streamateuser OR eap.emailaddress = us.jasminuser
+            "data_lake_pdn_og"."bronze_users" us
         LEFT JOIN 
-            CASE 
-                WHEN '{platform}' = 'jasmin' THEN "data_lake_db"."silver_jasmin_model_performance" jas
-                WHEN '{platform}' = 'streamate' THEN "data_lake_db"."silver_streamate_model_performance" stm
-                ELSE NULL
-            END AS platform_data
-            ON platform_data._id = us._id
+            {platform_table} platform_data ON platform_data._id = us._id
         WHERE 
-            CAST(eap."date" AS DATE) BETWEEN 
+            CAST(platform_data.date AS DATE) BETWEEN 
                 DATE_ADD('day', -30, DATE('{start_date}')) AND DATE_ADD('day', -30, DATE('{end_date}'))
             {user_filter}
             {filters_main_str}
         GROUP BY 
-            EXTRACT(YEAR FROM CAST(eap."date" AS DATE)), EXTRACT(MONTH FROM CAST(eap."date" AS DATE))
+            EXTRACT(YEAR FROM CAST(platform_data.date AS DATE)), 
+            EXTRACT(MONTH FROM CAST(platform_data.date AS DATE))
     )
     SELECT 
         (SELECT current_value FROM current_value) AS current_value,
@@ -112,7 +106,7 @@ def lambda_handler(event, context):
     """
 
     athena_client = boto3.client('athena')
-    database = 'data_lake_db'
+    database = 'data_lake_pdn_og'
     output_location = 's3://data-lake-prd-og/gold/'
 
     try:

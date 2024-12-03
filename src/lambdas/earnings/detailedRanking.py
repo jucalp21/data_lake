@@ -1,36 +1,7 @@
 import boto3
 import json
 import time
-import urllib3
 from datetime import datetime
-
-
-def fetch_api_data(api_url, api_authorization):
-    http = urllib3.PoolManager()
-    headers = {"Authorization": api_authorization}
-    response = http.request("GET", api_url, headers=headers)
-
-    if response.status != 200:
-        raise Exception(f"Error al consultar el API: {response.status}")
-
-    return json.loads(response.data.decode("utf-8"))
-
-
-def get_nested_value(data, key):
-    """
-    Esta función recupera el valor de una clave anidada, como jasmin.sales o total.
-    Si el valor no es válido (por ejemplo, nulo o no numérico), se devuelve 0.
-    """
-    keys = key.split('.')
-    for k in keys:
-        if isinstance(data, dict):
-            data = data.get(k, None)
-        else:
-            return None
-
-    if isinstance(data, (int, float)):
-        return data
-    return 0
 
 
 def lambda_handler(event, context):
@@ -59,20 +30,14 @@ def lambda_handler(event, context):
     start_date = body.get('start_date')
     end_date = body.get('end_date')
     locations = body.get('locations')
-    api_authorization = body.get('authorization')
     page = int(body.get('page', 1))
     limit = int(body.get('limit', 10))
-    user_selected = body.get('userSelected')
 
-    sort = body.get('sort', {})
-    sort_key = sort.get('key', 'total')
-    sort_value = sort.get('value', 'desc')
-
-    if not start_date or not end_date or not api_authorization:
+    if not start_date or not end_date:
         return {
             'statusCode': 400,
             'headers': headers,
-            'body': json.dumps('Debe proporcionar start_date, end_date y authorization en el cuerpo.')
+            'body': json.dumps('Debe proporcionar start_date y end_date en el cuerpo.')
         }
 
     try:
@@ -102,54 +67,59 @@ def lambda_handler(event, context):
                 city_filter = loc['cityName'].replace("'", "''")
                 filters_main.append(f"bu.city = '{city_filter}'")
 
-    user_filter = ""
-    if user_selected:
-        user_filter = f" AND bu._id = '{user_selected}'"
-
     filters_main_str = f" AND ({' OR '.join(filters_main)})" if filters_main else ""
-    query_filters = filters_main_str + user_filter
 
     query = f"""
-        WITH earnings_data AS (
+        WITH jasmin_data AS (
             SELECT
+                bu._id,
                 bu.artisticname,
-                bu.jasminuser,
-                bu.streamateuser,
                 bu.city,
                 bu.office,
                 bu.room,
+                'Jasmin' AS platform,
+                SUM(CAST(sjmp.total_earnings AS DOUBLE)) AS sales,
+                SUM(CAST(sjmp.online_seconds AS INTEGER)) AS time,
+                bu.picture_url
+            FROM silver_jasmin_model_performance sjmp
+            INNER JOIN bronze_users bu ON sjmp._id = bu._id
+            WHERE CAST(sjmp."date" AS DATE) BETWEEN DATE('{start_date}') AND DATE('{end_date}')
+            {filters_main_str}
+            GROUP BY bu._id, bu.artisticname, bu.city, bu.office, bu.room, bu.picture_url
+        ),
+        streamate_data AS (
+            SELECT
                 bu._id,
-                CASE
-                    WHEN eap.emailaddress = bu.jasminuser THEN 'jasmin'
-                    WHEN eap.emailaddress = bu.streamateuser THEN 'streamate'
-                END AS platform,
-                SUM(eap.payableamount) AS sales,
-                SUM(eap.onlineseconds) AS time
-            FROM "data_lake_db"."silver_earnings_by_performer" eap
-            INNER JOIN "data_lake_db"."bronze_users" bu
-                ON eap.emailaddress = bu.jasminuser OR eap.emailaddress = bu.streamateuser
-            WHERE CAST(eap."date" AS DATE) BETWEEN DATE('{start_date}') AND DATE('{end_date}')
-            {query_filters}
-            GROUP BY bu.artisticname, bu.jasminuser, bu.streamateuser, bu.city, bu.office, bu.room, bu._id,
-                    CASE
-                        WHEN eap.emailaddress = bu.jasminuser THEN 'jasmin'
-                        WHEN eap.emailaddress = bu.streamateuser THEN 'streamate'
-                    END
+                bu.artisticname,
+                bu.city,
+                bu.office,
+                bu.room,
+                'Streamate' AS platform,
+                SUM(CAST(sjmp.total_earnings AS DOUBLE)) AS sales,
+                SUM(CAST(sjmp.online_seconds AS INTEGER)) AS time,
+                bu.picture_url
+            FROM silver_streamate_model_performance sjmp
+            INNER JOIN bronze_users bu ON sjmp._id = bu._id
+            WHERE CAST(sjmp."date" AS DATE) BETWEEN DATE('{start_date}') AND DATE('{end_date}')
+            {filters_main_str}
+            GROUP BY bu._id, bu.artisticname, bu.city, bu.office, bu.room, bu.picture_url
         )
         SELECT
-            artisticname,
-            jasminuser AS user,
-            city,
-            office,
-            room,
-            _id,
-            platform,
-            sales,
-            time,
-            ROUND((sales / SUM(sales) OVER (PARTITION BY artisticname)) * 100, 2) AS percentage,
-            SUM(sales) OVER (PARTITION BY artisticname) AS total
-        FROM earnings_data
-        ORDER BY artisticname, platform;
+            COALESCE(jd._id, sd._id) AS _id,
+            COALESCE(jd.artisticname, sd.artisticname) AS artisticname,
+            COALESCE(jd.city, sd.city) AS city,
+            COALESCE(jd.office, sd.office) AS office,
+            COALESCE(jd.room, sd.room) AS room,
+            jd.picture_url AS picture,
+            COALESCE(jd.sales, 0) AS jasmin_sales,
+            COALESCE(jd.time, 0) AS jasmin_time,
+            COALESCE(sd.sales, 0) AS streamate_sales,
+            COALESCE(sd.time, 0) AS streamate_time,
+            ROUND(COALESCE(jd.sales, 0) / (COALESCE(jd.sales, 0) + COALESCE(sd.sales, 0)) * 100, 2) AS jasmin_percentage,
+            ROUND(COALESCE(sd.sales, 0) / (COALESCE(jd.sales, 0) + COALESCE(sd.sales, 0)) * 100, 2) AS streamate_percentage,
+            COALESCE(jd.sales, 0) + COALESCE(sd.sales, 0) AS total_sales
+        FROM jasmin_data jd
+        FULL OUTER JOIN streamate_data sd ON jd._id = sd._id
     """
 
     athena_client = boto3.client('athena')
@@ -180,7 +150,7 @@ def lambda_handler(event, context):
                 return {
                     'statusCode': 500,
                     'headers': headers,
-                    'body': json.dumps(f"Query {query_state} con motivo: {query_status['QueryExecution']['Status']['StateChangeReason']}")
+                    'body': json.dumps(f"Query {query_state} con motivo: {query_status['QueryExecution']['Status']['StateChangeReason']}"),
                 }
 
             time.sleep(sleep_time)
@@ -190,7 +160,7 @@ def lambda_handler(event, context):
             return {
                 'statusCode': 500,
                 'headers': headers,
-                'body': json.dumps('Timeout al esperar que la consulta se ejecute.')
+                'body': json.dumps('Timeout al esperar que la consulta se ejecute.'),
             }
 
         result = athena_client.get_query_results(
@@ -201,76 +171,35 @@ def lambda_handler(event, context):
             return {
                 'statusCode': 200,
                 'headers': headers,
-                'body': json.dumps('No se encontraron resultados para el rango de fechas especificado.')
+                'body': json.dumps('No se encontraron resultados para el rango de fechas especificado.'),
             }
 
-        api_url = "https://1astats.omgworldwidegroup.com/api/v1/user"
-        try:
-            models_data = {model["_id"]: model for model in fetch_api_data(
-                api_url, api_authorization).get("users", [])}
-        except Exception as api_error:
-            return {
-                'statusCode': 500,
-                'headers': headers,
-                'body': json.dumps(f"Error al consultar el API: {str(api_error)}")
-            }
-
-        output_dict = {}
+        output = []
         for row in rows[1:]:
-            artistic_name = row['Data'][0].get('VarCharValue', None)
-            _id = row['Data'][5].get('VarCharValue', None)
-
-            if not artistic_name or not _id:
-                continue
-
-            if _id not in models_data:
-                continue
-
-            if _id not in output_dict:
-                output_dict[_id] = {
-                    "_id": _id,
-                    "model": {
-                        "artisticName": artistic_name,
-                        "user": row['Data'][1].get('VarCharValue', None),
-                        "role": "model",
-                        "city": row['Data'][2].get('VarCharValue', None),
-                        "office": row['Data'][3].get('VarCharValue', None),
-                        "room": row['Data'][4].get('VarCharValue', None),
-                        "picture": models_data.get(_id, {}).get("picture", None)
-                    },
-                    "jasmin": {},
-                    "streamate": {},
-                    "total": 0
-                }
-
-            data = output_dict[_id]
-            platform = row['Data'][6].get('VarCharValue', None)
-
-            platform_data = {
-                "sales": float(row['Data'][7].get('VarCharValue', 0)),
-                "time": int(row['Data'][8].get('VarCharValue', 0)) if row['Data'][8].get('VarCharValue') else 0,
-                "percentage": float(row['Data'][9].get('VarCharValue', 0))
+            data = {
+                "_id": row['Data'][0].get('VarCharValue', None),
+                "model": {
+                    "artisticName": row['Data'][1].get('VarCharValue', None),
+                    "user": row['Data'][1].get('VarCharValue', None),
+                    "_id": row['Data'][1].get('VarCharValue', None),
+                    "role": "model",
+                    "city": row['Data'][2].get('VarCharValue', None),
+                    "office": row['Data'][3].get('VarCharValue', None),
+                    "picture": row['Data'][10].get('VarCharValue', None),
+                },
+                "jasmin": {
+                    "sales": float(row['Data'][6].get('VarCharValue', 0)),
+                    "time": int(row['Data'][7].get('VarCharValue', 0)),
+                    "percentage": float(row['Data'][8].get('VarCharValue', 0)),
+                },
+                "streamate": {
+                    "sales": float(row['Data'][9].get('VarCharValue', 0)),
+                    "time": int(row['Data'][10].get('VarCharValue', 0)),
+                    "percentage": float(row['Data'][11].get('VarCharValue', 0)),
+                },
+                "total": float(row['Data'][12].get('VarCharValue', 0)),
             }
-            if platform:
-                data[platform] = platform_data
-            data["total"] += platform_data["sales"]
-
-        output = list(output_dict.values())
-
-        if sort_key:
-            sort_field_mapping = {
-                "salesJasmin": "jasmin.sales",
-                "onlineJasmin": "jasmin.time",
-                "salesStreamate": "streamate.sales",
-                "onlineStreamate": "streamate.time",
-                "total": "total"
-            }
-
-            sort_field = sort_field_mapping.get(sort_key, None)
-            if sort_field:
-                reverse_order = sort_value != 'desc'
-                output.sort(key=lambda x: get_nested_value(
-                    x, sort_field), reverse=reverse_order)
+            output.append(data)
 
         start_idx = (page - 1) * limit
         end_idx = start_idx + limit
@@ -284,13 +213,13 @@ def lambda_handler(event, context):
                 "limit": limit,
                 "total_results": len(output),
                 "hasMore": end_idx < len(output),
-                "results": paginated_results
-            })
+                "results": paginated_results,
+            }),
         }
 
     except Exception as e:
         return {
             'statusCode': 500,
             'headers': headers,
-            'body': json.dumps(f"Error interno del servidor: {str(e)}")
+            'body': json.dumps(f'Error ejecutando la consulta: {str(e)}'),
         }

@@ -67,16 +67,49 @@ def lambda_handler(event, context):
 
     filters_main_str = f" AND ({' OR '.join(filters_main)})" if filters_main else ""
 
-    query = f"""
-        SELECT  ssmp.date AS report_date,
-                'Streamate' AS source,
-                SUM(CAST(ssmp.total_earnings AS DOUBLE)) AS totalAmount
-        FROM    "data_lake_pdn_og"."silver_streamate_model_performance" ssmp
-        INNER JOIN "data_lake_pdn_og"."bronze_users" us ON ssmp._id = us._id
-        WHERE   CAST(ssmp.date AS DATE) BETWEEN DATE('{start_date}') AND DATE('{end_date}')
-        {filters_main_str}
-        GROUP BY ssmp.date
-    """
+    # Dependiendo de la plataforma, armamos la consulta SQL
+    if platform == "streamate":
+        query = f"""
+            SELECT  ssmp.date AS report_date,
+                    'Streamate' AS source,
+                    SUM(CAST(ssmp.total_earnings AS DOUBLE)) AS totalAmount
+            FROM    "data_lake_pdn_og"."silver_streamate_model_performance" ssmp
+            INNER JOIN "data_lake_pdn_og"."bronze_users" us ON ssmp._id = us._id
+            WHERE   CAST(ssmp.date AS DATE) BETWEEN DATE('{start_date}') AND DATE('{end_date}')
+            {filters_main_str}
+            GROUP BY ssmp.date
+        """
+    elif platform == "jasmin":
+        query = f"""
+            SELECT  jsmp.date AS report_date,
+                    'Jasmin' AS source,
+                    SUM(CAST(jsmp.total_earnings AS DOUBLE)) AS totalAmount
+            FROM    "data_lake_pdn_og"."silver_jasmin_model_performance" jsmp
+            INNER JOIN "data_lake_pdn_og"."bronze_users" us ON jsmp._id = us._id
+            WHERE   CAST(jsmp.date AS DATE) BETWEEN DATE('{start_date}') AND DATE('{end_date}')
+            {filters_main_str}
+            GROUP BY jsmp.date
+        """
+    else:  # Si no llega plataforma, hacemos UNION ALL de ambas fuentes
+        query = f"""
+            SELECT  ssmp.date AS report_date,
+                    'Streamate' AS source,
+                    SUM(CAST(ssmp.total_earnings AS DOUBLE)) AS totalAmount
+            FROM    "data_lake_pdn_og"."silver_streamate_model_performance" ssmp
+            INNER JOIN "data_lake_pdn_og"."bronze_users" us ON ssmp._id = us._id
+            WHERE   CAST(ssmp.date AS DATE) BETWEEN DATE('{start_date}') AND DATE('{end_date}')
+            {filters_main_str}
+            GROUP BY ssmp.date
+            UNION ALL
+            SELECT  jsmp.date AS report_date,
+                    'Jasmin' AS source,
+                    SUM(CAST(jsmp.total_earnings AS DOUBLE)) AS totalAmount
+            FROM    "data_lake_pdn_og"."silver_jasmin_model_performance" jsmp
+            INNER JOIN "data_lake_pdn_og"."bronze_users" us ON jsmp._id = us._id
+            WHERE   CAST(jsmp.date AS DATE) BETWEEN DATE('{start_date}') AND DATE('{end_date}')
+            {filters_main_str}
+            GROUP BY jsmp.date
+        """
 
     # Athena query execution
     athena_client = boto3.client('athena')

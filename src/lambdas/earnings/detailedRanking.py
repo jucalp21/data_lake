@@ -80,12 +80,12 @@ def lambda_handler(event, context):
                 'Jasmin' AS platform,
                 SUM(CAST(sjmp.total_earnings AS DOUBLE)) AS sales,
                 SUM(CAST(sjmp.online_seconds AS INTEGER)) AS time,
-                bu.picture_url
+                bu.picture
             FROM silver_jasmin_model_performance sjmp
             INNER JOIN bronze_users bu ON sjmp._id = bu._id
             WHERE CAST(sjmp."date" AS DATE) BETWEEN DATE('{start_date}') AND DATE('{end_date}')
             {filters_main_str}
-            GROUP BY bu._id, bu.artisticname, bu.city, bu.office, bu.room, bu.picture_url
+            GROUP BY bu._id, bu.artisticname, bu.city, bu.office, bu.room, bu.picture
         ),
         streamate_data AS (
             SELECT
@@ -97,12 +97,12 @@ def lambda_handler(event, context):
                 'Streamate' AS platform,
                 SUM(CAST(sjmp.total_earnings AS DOUBLE)) AS sales,
                 SUM(CAST(sjmp.online_seconds AS INTEGER)) AS time,
-                bu.picture_url
+                bu.picture
             FROM silver_streamate_model_performance sjmp
             INNER JOIN bronze_users bu ON sjmp._id = bu._id
             WHERE CAST(sjmp."date" AS DATE) BETWEEN DATE('{start_date}') AND DATE('{end_date}')
             {filters_main_str}
-            GROUP BY bu._id, bu.artisticname, bu.city, bu.office, bu.room, bu.picture_url
+            GROUP BY bu._id, bu.artisticname, bu.city, bu.office, bu.room, bu.picture
         )
         SELECT
             COALESCE(jd._id, sd._id) AS _id,
@@ -110,7 +110,7 @@ def lambda_handler(event, context):
             COALESCE(jd.city, sd.city) AS city,
             COALESCE(jd.office, sd.office) AS office,
             COALESCE(jd.room, sd.room) AS room,
-            jd.picture_url AS picture,
+            jd.picture AS picture,
             COALESCE(jd.sales, 0) AS jasmin_sales,
             COALESCE(jd.time, 0) AS jasmin_time,
             COALESCE(sd.sales, 0) AS streamate_sales,
@@ -123,8 +123,8 @@ def lambda_handler(event, context):
     """
 
     athena_client = boto3.client('athena')
-    database = 'data_lake_db'
-    output_location = 's3://data-lake-demo/gold/'
+    database = 'data_lake_pdn_og'
+    output_location = 's3://data-lake-prd-og/gold/'
 
     try:
         response = athena_client.start_query_execution(

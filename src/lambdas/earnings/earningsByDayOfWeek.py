@@ -31,6 +31,7 @@ def lambda_handler(event, context):
     end_date = body.get('end_date')
     locations = body.get('locations')
     user_selected = body.get('userSelected')
+    platform = body.get('platform')
 
     if not start_date or not end_date:
         return {
@@ -56,53 +57,96 @@ def lambda_handler(event, context):
         for loc in locations:
             if 'officeName' in loc and loc['officeName']:
                 office_filter = loc['officeName'].replace("'", "''")
-                filters_main.append(f"us.office = '{office_filter}'")
-                filters_inner.append(f"us_inner.office = '{office_filter}'")
+                filters_main.append(f"office = '{office_filter}'")
+                filters_inner.append(f"office = '{office_filter}'")
             elif 'cityName' in loc and loc['cityName']:
                 city_filter = loc['cityName'].replace("'", "''")
-                filters_main.append(f"us.city = '{city_filter}'")
-                filters_inner.append(f"us_inner.city = '{city_filter}'")
+                filters_main.append(f"city = '{city_filter}'")
+                filters_inner.append(f"city = '{city_filter}'")
 
     if user_selected:
-        user_selected_filter = user_selected.replace(
-            "'", "''")
-        filters_main.append(f"us._id = '{user_selected_filter}'")
-        filters_inner.append(f"us_inner._id = '{user_selected_filter}'")
+        user_selected_filter = user_selected.replace("'", "''")
+        filters_main.append(f"_id = '{user_selected_filter}'")
+        filters_inner.append(f"_id = '{user_selected_filter}'")
 
     filters_main_str = f" AND ({' OR '.join(filters_main)})" if filters_main else ""
     filters_inner_str = f" AND ({' OR '.join(filters_inner)})" if filters_inner else ""
 
+    filter_platform_table = {
+        'jasmin': 'data_lake_pdn_og.silver_jasmin_model_performance',
+        'streamate': 'data_lake_pdn_og.silver_streamate_model_performance'
+    }
+
+    platform = platform.lower() if platform else None
+
+    if platform and platform not in filter_platform_table:
+        return {
+            'statusCode': 400,
+            'headers': headers,
+            'body': json.dumps(f"Plataforma '{platform}' no reconocida.")
+        }
+
+    tables_to_query = []
+    if platform:
+        tables_to_query.append(filter_platform_table[platform])
+    else:
+        tables_to_query.extend(
+            [filter_platform_table['jasmin'], filter_platform_table['streamate']])
+
+    select_queries = []
+    for tbl in tables_to_query:
+        select_query = f"""
+        SELECT
+            eap._id,
+            eap."date",
+            us.city,
+            us._id,
+            CAST(eap.total_earnings AS DOUBLE) AS total_earnings
+        FROM {tbl} eap
+        INNER JOIN "data_lake_pdn_og"."bronze_users" us
+            ON eap._id = us._id
+        WHERE CAST(eap."date" AS DATE) BETWEEN DATE('{start_date}') AND DATE('{end_date}')
+            {filters_main_str}
+        """
+        select_queries.append(select_query.strip())
+
+    if len(select_queries) > 1:
+        union_all_query = " UNION ALL ".join(select_queries)
+    else:
+        union_all_query = select_queries[0]
+
     query = f"""
-        SELECT  CASE 
-                    WHEN day_of_week(CAST(eap."date" AS DATE)) = 1 THEN 'Lun'
-                    WHEN day_of_week(CAST(eap."date" AS DATE)) = 2 THEN 'Mar'
-                    WHEN day_of_week(CAST(eap."date" AS DATE)) = 3 THEN 'Mié'
-                    WHEN day_of_week(CAST(eap."date" AS DATE)) = 4 THEN 'Jue'
-                    WHEN day_of_week(CAST(eap."date" AS DATE)) = 5 THEN 'Vie'
-                    WHEN day_of_week(CAST(eap."date" AS DATE)) = 6 THEN 'Sáb'
-                    WHEN day_of_week(CAST(eap."date" AS DATE)) = 7 THEN 'Dom'
-                END AS DOW,
-                ROUND(SUM(eap.payableamount), 2) AS TOTAL,
-                ROUND((SUM(eap.payableamount) / 
-                      (SELECT SUM(eap_inner.payableamount) 
-                       FROM "data_lake_db"."silver_earnings_by_performer" eap_inner
-                       INNER JOIN "data_lake_db"."bronze_users" us_inner 
-                       ON (eap_inner.emailaddress = us_inner.streamateuser OR eap_inner.emailaddress = us_inner.jasminuser)
-                       WHERE CAST(eap_inner."date" AS DATE) BETWEEN DATE('{start_date}') AND DATE('{end_date}')
-                       {filters_inner_str})
-                ) * 100, 2) AS percentage
-        FROM        "data_lake_db"."silver_earnings_by_performer" eap
-        INNER JOIN  "data_lake_db"."bronze_users" us
-            ON (eap.emailaddress = us.streamateuser OR eap.emailaddress = us.jasminuser)
-        WHERE   CAST(eap."date" AS DATE) BETWEEN DATE('{start_date}') AND DATE('{end_date}')
-        {filters_main_str}
-        GROUP BY day_of_week(CAST(eap."date" AS DATE))
-        ORDER BY day_of_week(CAST(eap."date" AS DATE)) ASC;
+    WITH combined AS (
+        {union_all_query}
+    )
+
+    SELECT  
+        CASE 
+            WHEN day_of_week(CAST(combined."date" AS DATE)) = 1 THEN 'Lun'
+            WHEN day_of_week(CAST(combined."date" AS DATE)) = 2 THEN 'Mar'
+            WHEN day_of_week(CAST(combined."date" AS DATE)) = 3 THEN 'Mié'
+            WHEN day_of_week(CAST(combined."date" AS DATE)) = 4 THEN 'Jue'
+            WHEN day_of_week(CAST(combined."date" AS DATE)) = 5 THEN 'Vie'
+            WHEN day_of_week(CAST(combined."date" AS DATE)) = 6 THEN 'Sáb'
+            WHEN day_of_week(CAST(combined."date" AS DATE)) = 7 THEN 'Dom'
+        END AS DOW,
+        ROUND(SUM(combined.total_earnings), 2) AS TOTAL,
+        ROUND(
+            (SUM(combined.total_earnings) / (
+                SELECT SUM(combined.total_earnings)
+                FROM combined
+                WHERE 1=1 {filters_inner_str}
+            )) * 100, 2
+        ) AS percentage 
+    FROM combined 
+    WHERE 1=1 {filters_main_str}
+    GROUP BY day_of_week(CAST(combined."date" AS DATE))
+    ORDER BY day_of_week(CAST(combined."date" AS DATE)) ASC;
     """
 
     athena_client = boto3.client('athena')
-    database = 'data_lake_db'
-    output_location = 's3://data-lake-demo/gold/'
+    database = 'data_lake_pdn_og'
+    output_location = "s3://data-lake-prd-og/gold/"
 
     try:
         response = athena_client.start_query_execution(

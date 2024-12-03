@@ -31,12 +31,13 @@ def lambda_handler(event, context):
     end_date = body.get('end_date')
     locations = body.get('locations')
     user_selected = body.get('userSelected')
+    platform = body.get('platform')
 
     if not start_date or not end_date:
         return {
             'statusCode': 400,
             'headers': headers,
-            'body': json.dumps('Debe proporcionar al menos start_date y end_date en el formato YYYY-MM-DD')
+            'body': json.dumps('Debe proporcionar start_date y end_date en el formato YYYY-MM-DD')
         }
 
     try:
@@ -49,48 +50,38 @@ def lambda_handler(event, context):
             'body': json.dumps('Formato de fecha inválido. Use YYYY-MM-DD.')
         }
 
-    cities = []
-    offices = []
+    filters_main = []
 
     if locations:
         for loc in locations:
             if 'officeName' in loc and loc['officeName']:
-                offices.append(loc['officeName'].replace("'", "''"))
+                office_filter = loc['officeName'].replace("'", "''")
+                filters_main.append(f"us.office = '{office_filter}'")
             elif 'cityName' in loc and loc['cityName']:
-                cities.append(loc['cityName'].replace("'", "''"))
-
-    query = f"""
-    SELECT      eap.date,
-                SUM(eap.payableamount) AS totalAmount
-    FROM        "data_lake_db"."silver_earnings_by_performer" eap
-    INNER JOIN  "data_lake_db"."bronze_users" us
-        ON      (eap.emailaddress = us.streamateuser OR eap.emailaddress = us.jasminuser)
-    WHERE       CAST(eap.date AS DATE) BETWEEN DATE('{start_date}') AND DATE('{end_date}')
-    """
-
-    if cities or offices:
-        filters = []
-        if cities:
-            cities_str = ', '.join([f"'{city}'" for city in cities])
-            filters.append(f"us.city IN ({cities_str})")
-
-        if offices:
-            offices_str = ', '.join([f"'{office}'" for office in offices])
-            filters.append(f"us.office IN ({offices_str})")
-
-        query += f" AND ({' OR '.join(filters)})"
+                city_filter = loc['cityName'].replace("'", "''")
+                filters_main.append(f"us.city = '{city_filter}'")
 
     if user_selected:
-        query += f" AND us._id = '{user_selected}'"
+        user_selected_filter = user_selected.replace("'", "''")
+        filters_main.append(f"us._id = '{user_selected_filter}'")
 
-    query += """
-        GROUP BY eap.date
-        ORDER BY eap.date;
+    filters_main_str = f" AND ({' OR '.join(filters_main)})" if filters_main else ""
+
+    query = f"""
+        SELECT  ssmp.date AS report_date,
+                'Streamate' AS source,
+                SUM(CAST(ssmp.total_earnings AS DOUBLE)) AS totalAmount
+        FROM    "data_lake_pdn_og"."silver_streamate_model_performance" ssmp
+        INNER JOIN "data_lake_pdn_og"."bronze_users" us ON ssmp._id = us._id
+        WHERE   CAST(ssmp.date AS DATE) BETWEEN DATE('{start_date}') AND DATE('{end_date}')
+        {filters_main_str}
+        GROUP BY ssmp.date
     """
 
+    # Athena query execution
     athena_client = boto3.client('athena')
-    database = 'data_lake_db'
-    output_location = 's3://data-lake-demo/gold/'
+    database = 'data_lake_pdn_og'
+    output_location = 's3://data-lake-prd-og/gold/'
 
     try:
         response = athena_client.start_query_execution(
@@ -103,6 +94,8 @@ def lambda_handler(event, context):
 
         max_wait_time = 60
         waited_time = 0
+        sleep_time = 2
+
         while waited_time < max_wait_time:
             query_status = athena_client.get_query_execution(
                 QueryExecutionId=query_execution_id)
@@ -116,8 +109,9 @@ def lambda_handler(event, context):
                     'headers': headers,
                     'body': json.dumps(f"Query {query_state} con motivo: {query_status['QueryExecution']['Status']['StateChangeReason']}")
                 }
-            time.sleep(2)
-            waited_time += 2
+
+            time.sleep(sleep_time)
+            waited_time += sleep_time
 
         if waited_time >= max_wait_time:
             return {

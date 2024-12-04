@@ -31,6 +31,7 @@ def lambda_handler(event, context):
     end_date = body.get('end_date')
     locations = body.get('locations')
     user_selected = body.get('userSelected')
+    platform = body.get('platform')
 
     if not start_date or not end_date:
         return {
@@ -55,57 +56,143 @@ def lambda_handler(event, context):
         for loc in locations:
             if 'officeName' in loc and loc['officeName']:
                 office_filter = loc['officeName'].replace("'", "''")
-                filters_main.append(f"us.office = '{office_filter}'")
+                filters_main.append(f"bu.office = '{office_filter}'")
             elif 'cityName' in loc and loc['cityName']:
                 city_filter = loc['cityName'].replace("'", "''")
-                filters_main.append(f"us.city = '{city_filter}'")
+                filters_main.append(f"bu.city = '{city_filter}'")
 
     if user_selected:
-        user_selected = user_selected.replace(
-            "'", "''")
-        filters_main.append(f"us._id = '{user_selected}'")
+        user_selected_filter = user_selected.replace("'", "''")
+        filters_main.append(f"bu._id = '{user_selected_filter}'")
 
     filters_main_str = f" AND ({' OR '.join(filters_main)})" if filters_main else ""
 
-    query = f"""
-    SELECT base.transmissionType AS id,
-           base.transmissionType AS label,
-           COALESCE(SUM(earnings.payableamount), 0) AS value,
-           CASE base.transmissionType
-               WHEN 'Toy' THEN '#219E0D'
-               WHEN 'Privada' THEN '#21619A'
-               WHEN 'Otros' THEN '#EB933D'
-               ELSE '#000000'
-           END AS color
-    FROM (
-        SELECT 'Toy' AS transmissionType
-        UNION ALL
-        SELECT 'Privada' AS transmissionType
-        UNION ALL
-        SELECT 'Otros' AS transmissionType
-    ) AS base
-    LEFT JOIN (
-        SELECT 'Otros' AS transmissionType, SUM(COALESCE(eap.payableamount, 0)) AS payableamount
-        FROM "data_lake_db"."silver_earnings_by_performer" eap
-        INNER JOIN "data_lake_db"."bronze_users" us
-            ON (eap.emailaddress = us.streamateuser OR eap.emailaddress = us.jasminuser)
-        WHERE CAST(eap."date" AS DATE) BETWEEN DATE('{start_date}') AND DATE('{end_date}')
-        {filters_main_str}
-        GROUP BY us.office
-    ) AS earnings ON base.transmissionType = earnings.transmissionType
-    GROUP BY base.transmissionType
-    ORDER BY 
-        CASE 
-            WHEN base.transmissionType = 'Toy' THEN 1
-            WHEN base.transmissionType = 'Privada' THEN 2
-            WHEN base.transmissionType = 'Otros' THEN 3
-            ELSE 4
-        END;
-    """
+    if platform == "streamate":
+        query = f"""
+        SELECT base.transmissionType AS id,
+               base.transmissionType AS label,
+               COALESCE(SUM(COALESCE(CAST(earnings_streamate.payableamount AS DECIMAL), 0)), 0) AS value,
+               CASE base.transmissionType
+                   WHEN 'Toy' THEN '#219E0D'
+                   WHEN 'Privada' THEN '#21619A'
+                   WHEN 'Otros' THEN '#EB933D'
+                   ELSE '#000000'
+               END AS color
+        FROM (
+            SELECT 'Toy' AS transmissionType
+            UNION ALL
+            SELECT 'Privada' AS transmissionType
+            UNION ALL
+            SELECT 'Otros' AS transmissionType
+        ) AS base
+        LEFT JOIN (
+            SELECT 'Otros' AS transmissionType, 
+                   SUM(COALESCE(CAST(ssmp.total_earnings AS DECIMAL), 0)) AS payableamount
+            FROM "data_lake_pdn_og"."silver_streamate_model_performance" ssmp
+            INNER JOIN "data_lake_pdn_og"."bronze_users" bu
+                ON ssmp._id = bu._id
+            WHERE CAST(ssmp.date AS DATE) BETWEEN DATE('{start_date}') AND DATE('{end_date}')
+            {filters_main_str}
+            GROUP BY bu.office
+        ) AS earnings_streamate ON base.transmissionType = earnings_streamate.transmissionType
+        GROUP BY base.transmissionType
+        ORDER BY 
+            CASE 
+                WHEN base.transmissionType = 'Toy' THEN 1
+                WHEN base.transmissionType = 'Privada' THEN 2
+                WHEN base.transmissionType = 'Otros' THEN 3
+                ELSE 4
+            END;
+        """
+    elif platform == "jasmin":
+        query = f"""
+        SELECT base.transmissionType AS id,
+               base.transmissionType AS label,
+               COALESCE(SUM(COALESCE(CAST(earnings_jasmin.payableamount AS DECIMAL), 0)), 0) AS value,
+               CASE base.transmissionType
+                   WHEN 'Toy' THEN '#219E0D'
+                   WHEN 'Privada' THEN '#21619A'
+                   WHEN 'Otros' THEN '#EB933D'
+                   ELSE '#000000'
+               END AS color
+        FROM (
+            SELECT 'Toy' AS transmissionType
+            UNION ALL
+            SELECT 'Privada' AS transmissionType
+            UNION ALL
+            SELECT 'Otros' AS transmissionType
+        ) AS base
+        LEFT JOIN (
+            SELECT 'Otros' AS transmissionType, 
+                   SUM(COALESCE(CAST(sjmp.total_earnings AS DECIMAL), 0)) AS payableamount
+            FROM "data_lake_pdn_og"."silver_jasmin_model_performance" sjmp
+            INNER JOIN "data_lake_pdn_og"."bronze_users" bu
+                ON sjmp._id = bu._id
+            WHERE CAST(sjmp.date AS DATE) BETWEEN DATE('{start_date}') AND DATE('{end_date}')
+            {filters_main_str}
+            GROUP BY bu.office
+        ) AS earnings_jasmin ON base.transmissionType = earnings_jasmin.transmissionType
+        GROUP BY base.transmissionType
+        ORDER BY 
+            CASE 
+                WHEN base.transmissionType = 'Toy' THEN 1
+                WHEN base.transmissionType = 'Privada' THEN 2
+                WHEN base.transmissionType = 'Otros' THEN 3
+                ELSE 4
+            END;
+        """
+    else:  # If platform is empty or unspecified, use both tables
+        query = f"""
+        SELECT base.transmissionType AS id,
+               base.transmissionType AS label,
+               COALESCE(SUM(COALESCE(CAST(earnings_jasmin.payableamount AS DECIMAL), 0)), 0) AS value,
+               CASE base.transmissionType
+                   WHEN 'Toy' THEN '#219E0D'
+                   WHEN 'Privada' THEN '#21619A'
+                   WHEN 'Otros' THEN '#EB933D'
+                   ELSE '#000000'
+               END AS color
+        FROM (
+            SELECT 'Toy' AS transmissionType
+            UNION ALL
+            SELECT 'Privada' AS transmissionType
+            UNION ALL
+            SELECT 'Otros' AS transmissionType
+        ) AS base
+        LEFT JOIN (
+            SELECT 'Otros' AS transmissionType, 
+                   SUM(COALESCE(CAST(sjmp.total_earnings AS DECIMAL), 0)) AS payableamount
+            FROM "data_lake_pdn_og"."silver_jasmin_model_performance" sjmp
+            INNER JOIN "data_lake_pdn_og"."bronze_users" bu
+                ON sjmp._id = bu._id
+            WHERE CAST(sjmp.date AS DATE) BETWEEN DATE('{start_date}') AND DATE('{end_date}')
+            {filters_main_str}
+            GROUP BY bu.office
+        ) AS earnings_jasmin ON base.transmissionType = earnings_jasmin.transmissionType
+        LEFT JOIN (
+            SELECT 'Privada' AS transmissionType, 
+                   SUM(COALESCE(CAST(ssmp.total_earnings AS DECIMAL), 0)) AS payableamount
+            FROM "data_lake_pdn_og"."silver_streamate_model_performance" ssmp
+            INNER JOIN "data_lake_pdn_og"."bronze_users" bu
+                ON ssmp._id = bu._id
+            WHERE CAST(ssmp.date AS DATE) BETWEEN DATE('{start_date}') AND DATE('{end_date}')
+            {filters_main_str}
+            GROUP BY bu.office
+        ) AS earnings_streamate ON base.transmissionType = earnings_streamate.transmissionType
+        GROUP BY base.transmissionType
+        ORDER BY 
+            CASE 
+                WHEN base.transmissionType = 'Toy' THEN 1
+                WHEN base.transmissionType = 'Privada' THEN 2
+                WHEN base.transmissionType = 'Otros' THEN 3
+                ELSE 4
+            END;
+        """
 
+    # Athena query execution
     athena_client = boto3.client('athena')
-    database = 'data_lake_db'
-    output_location = 's3://data-lake-demo/gold/'
+    database = 'data_lake_pdn_og'
+    output_location = 's3://data-lake-prd-og/gold/'
 
     try:
         response = athena_client.start_query_execution(

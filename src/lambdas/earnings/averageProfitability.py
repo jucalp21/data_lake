@@ -3,6 +3,7 @@ import json
 import time
 from datetime import datetime
 
+
 def lambda_handler(event, context):
     headers = {
         'Access-Control-Allow-Origin': '*',
@@ -72,9 +73,9 @@ def lambda_handler(event, context):
                base.transmissionType AS label,
                COALESCE(AVG(COALESCE(CAST(earnings_streamate.payableamount AS DECIMAL), 0)), 0) AS value,
                CASE base.transmissionType
-                   WHEN 'Toy' THEN '#219E0D'
-                   WHEN 'Privada' THEN '#21619A'
-                   WHEN 'Otros' THEN '#EB933D'
+                   WHEN 'Toy' THEN '#21619A'
+                   WHEN 'Privada' THEN '#EB933D'
+                   WHEN 'Total' THEN '#219E0D'
                    ELSE '#000000'
                END AS color
         FROM (
@@ -82,10 +83,10 @@ def lambda_handler(event, context):
             UNION ALL
             SELECT 'Privada' AS transmissionType
             UNION ALL
-            SELECT 'Otros' AS transmissionType
+            SELECT 'Total' AS transmissionType
         ) AS base
         LEFT JOIN (
-            SELECT 'Otros' AS transmissionType, 
+            SELECT 'Total' AS transmissionType, 
                    SUM(COALESCE(CAST(ssmp.total_earnings AS DECIMAL), 0)) AS payableamount
             FROM "data_lake_pdn_og"."silver_streamate_model_performance" ssmp
             INNER JOIN "data_lake_pdn_og"."bronze_users" bu
@@ -97,9 +98,9 @@ def lambda_handler(event, context):
         GROUP BY base.transmissionType
         ORDER BY 
             CASE 
-                WHEN base.transmissionType = 'Toy' THEN 1
+                WHEN base.transmissionType = 'Total' THEN 1
                 WHEN base.transmissionType = 'Privada' THEN 2
-                WHEN base.transmissionType = 'Otros' THEN 3
+                WHEN base.transmissionType = 'Toy' THEN 3
                 ELSE 4
             END;
         """
@@ -109,9 +110,9 @@ def lambda_handler(event, context):
                base.transmissionType AS label,
                COALESCE(AVG(COALESCE(CAST(earnings_jasmin.payableamount AS DECIMAL), 0)), 0) AS value,
                CASE base.transmissionType
-                   WHEN 'Toy' THEN '#219E0D'
-                   WHEN 'Privada' THEN '#21619A'
-                   WHEN 'Otros' THEN '#EB933D'
+                   WHEN 'Toy' THEN '#21619A'
+                   WHEN 'Privada' THEN '#EB933D'
+                   WHEN 'Total' THEN '#219E0D'
                    ELSE '#000000'
                END AS color
         FROM (
@@ -119,10 +120,10 @@ def lambda_handler(event, context):
             UNION ALL
             SELECT 'Privada' AS transmissionType
             UNION ALL
-            SELECT 'Otros' AS transmissionType
+            SELECT 'Total' AS transmissionType
         ) AS base
         LEFT JOIN (
-            SELECT 'Otros' AS transmissionType, 
+            SELECT 'Total' AS transmissionType, 
                    SUM(COALESCE(CAST(sjmp.total_earnings AS DECIMAL), 0)) AS payableamount
             FROM "data_lake_pdn_og"."silver_jasmin_model_performance" sjmp
             INNER JOIN "data_lake_pdn_og"."bronze_users" bu
@@ -134,9 +135,9 @@ def lambda_handler(event, context):
         GROUP BY base.transmissionType
         ORDER BY 
             CASE 
-                WHEN base.transmissionType = 'Toy' THEN 1
+                WHEN base.transmissionType = 'Total' THEN 1
                 WHEN base.transmissionType = 'Privada' THEN 2
-                WHEN base.transmissionType = 'Otros' THEN 3
+                WHEN base.transmissionType = 'Toy' THEN 3
                 ELSE 4
             END;
         """
@@ -146,9 +147,9 @@ def lambda_handler(event, context):
                base.transmissionType AS label,
                COALESCE(AVG(COALESCE(CAST(earnings_jasmin.payableamount AS DECIMAL), 0)), 0) AS value,
                CASE base.transmissionType
-                   WHEN 'Toy' THEN '#219E0D'
-                   WHEN 'Privada' THEN '#21619A'
-                   WHEN 'Otros' THEN '#EB933D'
+                   WHEN 'Toy' THEN '#21619A'
+                   WHEN 'Privada' THEN '#EB933D'
+                   WHEN 'Total' THEN '#219E0D'
                    ELSE '#000000'
                END AS color
         FROM (
@@ -156,10 +157,10 @@ def lambda_handler(event, context):
             UNION ALL
             SELECT 'Privada' AS transmissionType
             UNION ALL
-            SELECT 'Otros' AS transmissionType
+            SELECT 'Total' AS transmissionType
         ) AS base
         LEFT JOIN (
-            SELECT 'Otros' AS transmissionType, 
+            SELECT 'Total' AS transmissionType, 
                    SUM(COALESCE(CAST(sjmp.total_earnings AS DECIMAL), 0)) AS payableamount
             FROM "data_lake_pdn_og"."silver_jasmin_model_performance" sjmp
             INNER JOIN "data_lake_pdn_og"."bronze_users" bu
@@ -181,9 +182,9 @@ def lambda_handler(event, context):
         GROUP BY base.transmissionType
         ORDER BY 
             CASE 
-                WHEN base.transmissionType = 'Toy' THEN 1
+                WHEN base.transmissionType = 'Total' THEN 1
                 WHEN base.transmissionType = 'Privada' THEN 2
-                WHEN base.transmissionType = 'Otros' THEN 3
+                WHEN base.transmissionType = 'Toy' THEN 3
                 ELSE 4
             END;
         """
@@ -239,9 +240,11 @@ def lambda_handler(event, context):
                 'statusCode': 200,
                 'headers': headers,
                 'body': json.dumps([  # Default values if no data
-                    {"id": "Toy", "label": "Toy", "value": 0.0, "color": "#219E0D"},
-                    {"id": "Privada", "label": "Privada", "value": 0.0, "color": "#21619A"},
-                    {"id": "Otros", "label": "Otros", "value": 0.0, "color": "#EB933D"}
+                    {"id": "Toy", "label": "Toy", "value": 0.0, "color": "#21619A"},
+                    {"id": "Privada", "label": "Privada",
+                        "value": 0.0, "color": "#EB933D"},
+                    {"id": "Total", "label": "Total",
+                        "value": 0.0, "color": "#219E0D"}
                 ])
             }
 

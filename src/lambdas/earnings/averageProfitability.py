@@ -145,7 +145,8 @@ def lambda_handler(event, context):
         query = f"""
         SELECT base.transmissionType AS id,
                base.transmissionType AS label,
-               COALESCE(AVG(COALESCE(CAST(earnings_jasmin.payableamount AS DECIMAL), 0)), 0) AS value,
+               COALESCE(AVG(COALESCE(CAST(earnings_jasmin.payableamount AS DECIMAL), 0)), 0) +
+               COALESCE(AVG(COALESCE(CAST(earnings_streamate.payableamount AS DECIMAL), 0)), 0) AS value,
                CASE base.transmissionType
                    WHEN 'Toy' THEN '#21619A'
                    WHEN 'Privada' THEN '#EB933D'
@@ -170,7 +171,7 @@ def lambda_handler(event, context):
             GROUP BY bu.office
         ) AS earnings_jasmin ON base.transmissionType = earnings_jasmin.transmissionType
         LEFT JOIN (
-            SELECT 'Privada' AS transmissionType, 
+            SELECT 'Total' AS transmissionType, 
                    SUM(COALESCE(CAST(ssmp.total_earnings AS DECIMAL), 0)) AS payableamount
             FROM "data_lake_pdn_og"."silver_streamate_model_performance" ssmp
             INNER JOIN "data_lake_pdn_og"."bronze_users" bu

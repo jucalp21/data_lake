@@ -4,6 +4,25 @@ import time
 from datetime import datetime
 
 
+def deduce_time_unit(start_date, end_date):
+    start_date = datetime.strptime(start_date, '%Y-%m-%d')
+    end_date = datetime.strptime(end_date, '%Y-%m-%d')
+    delta_days = (end_date - start_date).days
+
+    if delta_days == 0:
+        return 'day'
+    elif delta_days <= 7:
+        return 'week'
+    elif delta_days <= 15:
+        return 'biweek'
+    elif delta_days <= 30:
+        return 'month'
+    elif delta_days <= 90:
+        return 'quarter'
+    else:
+        return 'year'
+
+
 def lambda_handler(event, context):
     headers = {
         'Access-Control-Allow-Origin': '*',
@@ -43,6 +62,8 @@ def lambda_handler(event, context):
             'body': json.dumps('Invalid date format. Use YYYY-MM-DD.')
         }
 
+    time_unit = deduce_time_unit(start_date, end_date)
+
     user_filter = ""
     if user_selected:
         user_filter = f" AND us._id = '{user_selected}'"
@@ -59,15 +80,13 @@ def lambda_handler(event, context):
 
     filters_main_str = f" AND ({' OR '.join(filters_main)})" if filters_main else ""
 
+    # Modificación en la lógica para tomar ambos plataformas cuando no se especifica una
     if platform == 'jasmin':
         platform_table = 'data_lake_pdn_og.silver_jasmin_model_performance'
-        union_str = ''
     elif platform == 'streamate':
         platform_table = 'data_lake_pdn_og.silver_streamate_model_performance'
-        union_str = ''
     else:
-        platform_table = 'data_lake_pdn_og.silver_jasmin_model_performance'
-        union_str = ' UNION ALL SELECT * FROM data_lake_pdn_og.silver_streamate_model_performance'
+        platform_table = "(SELECT * FROM data_lake_pdn_og.silver_jasmin_model_performance UNION ALL SELECT * FROM data_lake_pdn_og.silver_streamate_model_performance)"
 
     query = f"""
     WITH current_value AS (
@@ -90,13 +109,25 @@ def lambda_handler(event, context):
         LEFT JOIN 
             {platform_table} platform_data ON platform_data._id = us._id
         WHERE 
-            CAST(platform_data.date AS DATE) BETWEEN 
-                DATE_ADD('day', -30, DATE('{start_date}')) AND DATE_ADD('day', -30, DATE('{end_date}'))
-            {user_filter}
-            {filters_main_str}
+            CASE 
+                WHEN '{time_unit}' = 'day' THEN CAST(platform_data.date AS DATE) BETWEEN DATE_ADD('day', -1, DATE('{start_date}')) AND DATE_ADD('day', -1, DATE('{end_date}'))
+                WHEN '{time_unit}' = 'week' THEN CAST(platform_data.date AS DATE) BETWEEN DATE_ADD('week', -1, DATE('{start_date}')) AND DATE_ADD('week', -1, DATE('{end_date}'))
+                WHEN '{time_unit}' = 'biweek' THEN CAST(platform_data.date AS DATE) BETWEEN DATE_ADD('day', -14, DATE('{start_date}')) AND DATE_ADD('day', -14, DATE('{end_date}'))
+                WHEN '{time_unit}' = 'month' THEN CAST(platform_data.date AS DATE) BETWEEN DATE_ADD('month', -1, DATE('{start_date}')) AND DATE_ADD('month', -1, DATE('{end_date}'))
+                WHEN '{time_unit}' = 'quarter' THEN CAST(platform_data.date AS DATE) BETWEEN DATE_ADD('month', -3, DATE('{start_date}')) AND DATE_ADD('month', -3, DATE('{end_date}'))
+                ELSE CAST(platform_data.date AS DATE) BETWEEN DATE_ADD('year', -1, DATE('{start_date}')) AND DATE_ADD('year', -1, DATE('{end_date}'))
+            END
+        {user_filter}
+        {filters_main_str}
         GROUP BY 
-            EXTRACT(YEAR FROM CAST(platform_data.date AS DATE)), 
-            EXTRACT(MONTH FROM CAST(platform_data.date AS DATE))
+            CASE 
+                WHEN '{time_unit}' = 'day' THEN EXTRACT(DAY FROM CAST(platform_data.date AS DATE))
+                WHEN '{time_unit}' = 'week' THEN EXTRACT(WEEK FROM CAST(platform_data.date AS DATE))
+                WHEN '{time_unit}' = 'biweek' THEN EXTRACT(WEEK FROM CAST(platform_data.date AS DATE)) / 2
+                WHEN '{time_unit}' = 'month' THEN EXTRACT(MONTH FROM CAST(platform_data.date AS DATE))
+                WHEN '{time_unit}' = 'quarter' THEN EXTRACT(QUARTER FROM CAST(platform_data.date AS DATE))
+                ELSE EXTRACT(YEAR FROM CAST(platform_data.date AS DATE))
+            END
     )
     SELECT 
         (SELECT current_value FROM current_value) AS current_value,

@@ -90,21 +90,53 @@ def lambda_handler(event, context):
         amount_column = 'sjmp.total_earnings'
 
     query = f"""
-        WITH ranked_artists AS (
-            SELECT      us.artisticname,
-                        ROUND(SUM(CAST({amount_column} AS DOUBLE)), 2) AS total_earnings,
-                        ROW_NUMBER() OVER (ORDER BY SUM(CAST({amount_column} AS DOUBLE)) {sort_key}) AS ranking
-            FROM        {table_name}
-            INNER JOIN  "data_lake_pdn_og"."bronze_users" us ON us._id = sjmp._id
-            WHERE       CAST(sjmp."date" AS DATE) BETWEEN DATE('{start_date}') AND DATE('{end_date}')
-                        {filters_main_str}
-            GROUP BY    us.artisticname
-        )
-        SELECT      CASE WHEN ranking <= 5 THEN artisticname ELSE 'General' END AS artisticname,
-                    ROUND(SUM(total_earnings), 2) AS total_earnings
-        FROM        ranked_artists
-        GROUP BY    CASE WHEN ranking <= 5 THEN artisticname ELSE 'General' END
-        ORDER BY    total_earnings {sort_key};
+    WITH ranked_artists AS (
+        SELECT
+            us.artisticname,
+            MAX(us.picture) AS picture,
+            MAX(us.city) AS city,
+            MAX(us.office) AS office,
+            ROUND(SUM(CAST({amount_column} AS DOUBLE)), 2) AS total_earnings,
+            ROW_NUMBER() OVER (ORDER BY SUM(CAST({amount_column} AS DOUBLE)) {sort_key}) AS ranking
+        FROM
+            {table_name}
+        INNER JOIN
+            "data_lake_pdn_og"."bronze_users" us ON us._id = sjmp._id
+        WHERE
+            CAST(sjmp."date" AS DATE) BETWEEN DATE('{start_date}') AND DATE('{end_date}')
+            {filters_main_str}
+        GROUP BY
+            us.artisticname
+    ),
+    total_earnings_calculation AS (
+        SELECT
+            ROUND(SUM(total_earnings), 2) AS total_global
+        FROM
+            ranked_artists
+    ),
+    artist_with_general AS (
+        SELECT
+            CASE WHEN ranking <= 5 THEN artisticname ELSE 'General' END AS artisticname,
+            CASE WHEN ranking <= 5 THEN picture ELSE '' END AS picture,
+            CASE WHEN ranking <= 5 THEN city ELSE '' END AS city,
+            CASE WHEN ranking <= 5 THEN office ELSE '' END AS office,
+            total_earnings
+        FROM
+            ranked_artists
+    )
+    SELECT
+        artisticname,
+        MAX(picture) AS picture,
+        MAX(city) AS city,
+        MAX(office) AS office,
+        ROUND(SUM(total_earnings), 2) AS total_earnings,
+        ROUND((SUM(total_earnings) / (SELECT total_global FROM total_earnings_calculation)) * 100, 2) AS percentage
+    FROM
+        artist_with_general
+    GROUP BY
+        artisticname
+    ORDER BY
+        total_earnings {sort_key};
     """
 
     athena_client = boto3.client('athena')
@@ -159,22 +191,22 @@ def lambda_handler(event, context):
                 'body': json.dumps('No se encontraron resultados para el rango de fechas especificado.')
             }
 
-        # Calcular el total global de ganancias
-        total_global = 0
         output = []
         for row in rows[1:]:
             artisticname = row['Data'][0]['VarCharValue']
-            total_earnings = float(row['Data'][1]['VarCharValue'])
+            picture = row['Data'][1]['VarCharValue']
+            city = row['Data'][2]['VarCharValue']
+            office = row['Data'][3]['VarCharValue']
+            total_earnings = float(row['Data'][4]['VarCharValue'])
+            percentage = float(row['Data'][5]['VarCharValue'])
             output.append({
                 'artisticname': artisticname,
-                'total_earnings': total_earnings
+                'picture': picture,
+                'city': city,
+                'office': office,
+                'total_earnings': total_earnings,
+                'percentage': percentage
             })
-            total_global += total_earnings
-
-        # Calcular el porcentaje
-        for artist in output:
-            artist['percentage'] = round(
-                (artist['total_earnings'] / total_global) * 100, 2)
 
         return {
             'statusCode': 200,

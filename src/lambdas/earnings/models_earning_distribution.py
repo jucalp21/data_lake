@@ -32,6 +32,7 @@ def lambda_handler(event, context):
     locations = body.get('locations')
     user_selected = body.get('userSelected')
     sort_key = body.get('sort_key', 'DESC').upper()
+    platform = body.get('platform', '').lower()
 
     if not start_date or not end_date:
         return {
@@ -74,15 +75,28 @@ def lambda_handler(event, context):
 
     filters_main_str = f" AND ({' OR '.join(filters_main)})" if filters_main else ""
 
+    if platform == 'jasmin':
+        table_name = 'silver_jasmin_model_performance sjmp'
+        amount_column = 'sjmp.total_earnings'
+    elif platform == 'streamate':
+        table_name = 'silver_streamate_model_performance sjmp'
+        amount_column = 'sjmp.total_earnings'
+    else:
+        table_name = '''(
+            SELECT date, total_earnings, _id FROM silver_jasmin_model_performance
+            UNION ALL
+            SELECT date, total_earnings, _id FROM silver_streamate_model_performance
+        ) sjmp'''
+        amount_column = 'sjmp.total_earnings'
+
     query = f"""
         WITH ranked_artists AS (
             SELECT      us.artisticname,
-                        ROUND(SUM(eap.payableAmount), 2) AS total_earnings,
-                        ROW_NUMBER() OVER (ORDER BY SUM(eap.payableAmount) {sort_key}) AS ranking
-            FROM        "data_lake_db"."silver_earnings_by_performer" eap
-            INNER JOIN  "data_lake_db"."bronze_users" us
-                ON (eap.emailaddress = us.streamateuser OR eap.emailaddress = us.jasminuser)
-            WHERE       eap.date BETWEEN '{start_date}' AND '{end_date}'
+                        ROUND(SUM(CAST({amount_column} AS DOUBLE)), 2) AS total_earnings,
+                        ROW_NUMBER() OVER (ORDER BY SUM(CAST({amount_column} AS DOUBLE)) {sort_key}) AS ranking
+            FROM        {table_name}
+            INNER JOIN  "data_lake_pdn_og"."bronze_users" us ON us._id = sjmp._id
+            WHERE       CAST(sjmp."date" AS DATE) BETWEEN DATE('{start_date}') AND DATE('{end_date}')
                         {filters_main_str}
             GROUP BY    us.artisticname
         )
@@ -94,8 +108,8 @@ def lambda_handler(event, context):
     """
 
     athena_client = boto3.client('athena')
-    database = 'data_lake_db'
-    output_location = 's3://data-lake-demo/gold/'
+    database = 'data_lake_pdn_og'
+    output_location = 's3://data-lake-prd-og/gold/'
 
     try:
         response = athena_client.start_query_execution(
@@ -145,12 +159,22 @@ def lambda_handler(event, context):
                 'body': json.dumps('No se encontraron resultados para el rango de fechas especificado.')
             }
 
+        # Calcular el total global de ganancias
+        total_global = 0
         output = []
         for row in rows[1:]:
+            artisticname = row['Data'][0]['VarCharValue']
+            total_earnings = float(row['Data'][1]['VarCharValue'])
             output.append({
-                'artisticname': row['Data'][0]['VarCharValue'],
-                'total_earnings': row['Data'][1]['VarCharValue']
+                'artisticname': artisticname,
+                'total_earnings': total_earnings
             })
+            total_global += total_earnings
+
+        # Calcular el porcentaje
+        for artist in output:
+            artist['percentage'] = round(
+                (artist['total_earnings'] / total_global) * 100, 2)
 
         return {
             'statusCode': 200,

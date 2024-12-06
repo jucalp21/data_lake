@@ -96,6 +96,7 @@ def lambda_handler(event, context):
             eap._id,
             eap."date",
             us.city,
+            us.office,
             us._id,
             CAST(eap.total_earnings AS DOUBLE) AS total_earnings
         FROM {tbl} eap

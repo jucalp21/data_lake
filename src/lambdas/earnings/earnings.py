@@ -1,7 +1,7 @@
 import boto3
 import json
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 
 
 def lambda_handler(event, context):
@@ -28,21 +28,19 @@ def lambda_handler(event, context):
         }
 
     start_date = body.get('start_date')
-    end_date = body.get('end_date')
     locations = body.get('locations')
     user_selected = body.get('userSelected')
     platform = body.get('platform')
 
-    if not start_date or not end_date:
+    if not start_date:
         return {
             'statusCode': 400,
             'headers': headers,
-            'body': json.dumps('Debe proporcionar start_date y end_date en el formato YYYY-MM-DD')
+            'body': json.dumps('Debe proporcionar start_date en el formato YYYY-MM-DD')
         }
 
     try:
         datetime.strptime(start_date, '%Y-%m-%d')
-        datetime.strptime(end_date, '%Y-%m-%d')
     except ValueError:
         return {
             'statusCode': 400,
@@ -75,7 +73,7 @@ def lambda_handler(event, context):
                     SUM(CAST(ssmp.total_earnings AS DOUBLE)) AS totalAmount
             FROM    "data_lake_pdn_og"."silver_streamate_model_performance" ssmp
             INNER JOIN "data_lake_pdn_og"."bronze_users" us ON ssmp._id = us._id
-            WHERE   CAST(ssmp.date AS DATE) BETWEEN DATE('{start_date}') AND DATE('{end_date}')
+            WHERE   CAST(ssmp.date AS DATE) >= DATE('{start_date}')
             {filters_main_str}
             GROUP BY ssmp.date
             ORDER BY ssmp.date ASC
@@ -87,7 +85,7 @@ def lambda_handler(event, context):
                     SUM(CAST(jsmp.total_earnings AS DOUBLE)) AS totalAmount
             FROM    "data_lake_pdn_og"."silver_jasmin_model_performance" jsmp
             INNER JOIN "data_lake_pdn_og"."bronze_users" us ON jsmp._id = us._id
-            WHERE   CAST(jsmp.date AS DATE) BETWEEN DATE('{start_date}') AND DATE('{end_date}')
+            WHERE   CAST(jsmp.date AS DATE) >= DATE('{start_date}')
             {filters_main_str}
             GROUP BY jsmp.date
             ORDER BY jsmp.date ASC
@@ -99,7 +97,7 @@ def lambda_handler(event, context):
                     SUM(CAST(ssmp.total_earnings AS DOUBLE)) AS totalAmount
             FROM    "data_lake_pdn_og"."silver_streamate_model_performance" ssmp
             INNER JOIN "data_lake_pdn_og"."bronze_users" us ON ssmp._id = us._id
-            WHERE   CAST(ssmp.date AS DATE) BETWEEN DATE('{start_date}') AND DATE('{end_date}')
+            WHERE   CAST(ssmp.date AS DATE) >= DATE('{start_date}')
             {filters_main_str}
             GROUP BY ssmp.date
             
@@ -109,10 +107,9 @@ def lambda_handler(event, context):
                     SUM(CAST(jsmp.total_earnings AS DOUBLE)) AS totalAmount
             FROM    "data_lake_pdn_og"."silver_jasmin_model_performance" jsmp
             INNER JOIN "data_lake_pdn_og"."bronze_users" us ON jsmp._id = us._id
-            WHERE   CAST(jsmp.date AS DATE) BETWEEN DATE('{start_date}') AND DATE('{end_date}')
+            WHERE   CAST(jsmp.date AS DATE) >= DATE('{start_date}')
             {filters_main_str}
             GROUP BY jsmp.date
-            
             ORDER BY report_date ASC
         """
 
@@ -168,21 +165,50 @@ def lambda_handler(event, context):
             "jasmin": []
         }
 
+        # Convert Athena results to a dictionary by date
+        result_dict = {
+            "streamate": {},
+            "jasmin": {}
+        }
+
         for row in rows[1:]:
             date = row['Data'][0]['VarCharValue']
             platform = row['Data'][1]['VarCharValue']
             total_amount = float(row['Data'][2]['VarCharValue'])
 
-            # Append to the appropriate platform
             if platform == "Streamate":
-                result_data["streamate"].append({
-                    "date": date,
-                    "totalAmount": total_amount
-                })
+                result_dict["streamate"][date] = total_amount
             elif platform == "Jasmin":
+                result_dict["jasmin"][date] = total_amount
+
+        # Find the last available date from the query results
+        available_dates = sorted(set(result_dict["streamate"].keys()).union(
+            set(result_dict["jasmin"].keys())))
+
+        # Create result for each available date starting from the start_date
+        for date_str in available_dates:
+            # For Streamate
+            if date_str in result_dict["streamate"]:
+                result_data["streamate"].append({
+                    "date": date_str,
+                    "totalAmount": result_dict["streamate"][date_str]
+                })
+            else:
+                result_data["streamate"].append({
+                    "date": date_str,
+                    "totalAmount": None  # Or 0 if you prefer
+                })
+
+            # For Jasmin
+            if date_str in result_dict["jasmin"]:
                 result_data["jasmin"].append({
-                    "date": date,
-                    "totalAmount": total_amount
+                    "date": date_str,
+                    "totalAmount": result_dict["jasmin"][date_str]
+                })
+            else:
+                result_data["jasmin"].append({
+                    "date": date_str,
+                    "totalAmount": None  # Or 0 if you prefer
                 })
 
         # Return the response with the formatted data

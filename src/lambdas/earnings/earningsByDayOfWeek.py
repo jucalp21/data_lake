@@ -51,26 +51,22 @@ def lambda_handler(event, context):
         }
 
     filters_main = []
-    filters_inner = []
+    user_filter = ""
 
     if locations:
         for loc in locations:
             if 'officeName' in loc and loc['officeName']:
                 office_filter = loc['officeName'].replace("'", "''")
                 filters_main.append(f"office = '{office_filter}'")
-                filters_inner.append(f"office = '{office_filter}'")
             elif 'cityName' in loc and loc['cityName']:
                 city_filter = loc['cityName'].replace("'", "''")
                 filters_main.append(f"city = '{city_filter}'")
-                filters_inner.append(f"city = '{city_filter}'")
 
     if user_selected:
         user_selected_filter = user_selected.replace("'", "''")
-        filters_main.append(f"_id = '{user_selected_filter}'")
-        filters_inner.append(f"_id = '{user_selected_filter}'")
+        user_filter = f" AND us._id = '{user_selected_filter}'"
 
     filters_main_str = f" AND ({' OR '.join(filters_main)})" if filters_main else ""
-    filters_inner_str = f" AND ({' OR '.join(filters_inner)})" if filters_inner else ""
 
     filter_platform_table = {
         'jasmin': 'data_lake_pdn_og.silver_jasmin_model_performance',
@@ -107,6 +103,7 @@ def lambda_handler(event, context):
             ON eap._id = us._id
         WHERE CAST(eap."date" AS DATE) BETWEEN DATE('{start_date}') AND DATE('{end_date}')
             {filters_main_str}
+            {user_filter}
         """
         select_queries.append(select_query.strip())
 
@@ -135,13 +132,21 @@ def lambda_handler(event, context):
             (SUM(combined.total_earnings) / (
                 SELECT SUM(combined.total_earnings)
                 FROM combined
-                WHERE 1=1 {filters_inner_str}
             )) * 100, 2
         ) AS percentage 
     FROM combined 
     WHERE 1=1 {filters_main_str}
     GROUP BY day_of_week(CAST(combined."date" AS DATE))
-    ORDER BY day_of_week(CAST(combined."date" AS DATE)) ASC;
+    ORDER BY
+        CASE 
+            WHEN day_of_week(CAST(combined."date" AS DATE)) = 7 THEN 1  -- Domingo
+            WHEN day_of_week(CAST(combined."date" AS DATE)) = 1 THEN 2  -- Lunes
+            WHEN day_of_week(CAST(combined."date" AS DATE)) = 2 THEN 3  -- Martes
+            WHEN day_of_week(CAST(combined."date" AS DATE)) = 3 THEN 4  -- Miércoles
+            WHEN day_of_week(CAST(combined."date" AS DATE)) = 4 THEN 5  -- Jueves
+            WHEN day_of_week(CAST(combined."date" AS DATE)) = 5 THEN 6  -- Viernes
+            WHEN day_of_week(CAST(combined."date" AS DATE)) = 6 THEN 7  -- Sábado
+        END ASC;
     """
 
     athena_client = boto3.client('athena')

@@ -78,6 +78,7 @@ def lambda_handler(event, context):
             WHERE   CAST(ssmp.date AS DATE) BETWEEN DATE('{start_date}') AND DATE('{end_date}')
             {filters_main_str}
             GROUP BY ssmp.date
+            ORDER BY ssmp.date ASC
         """
     elif platform == "jasmin":
         query = f"""
@@ -89,6 +90,7 @@ def lambda_handler(event, context):
             WHERE   CAST(jsmp.date AS DATE) BETWEEN DATE('{start_date}') AND DATE('{end_date}')
             {filters_main_str}
             GROUP BY jsmp.date
+            ORDER BY jsmp.date ASC
         """
     else:  # Si no llega plataforma, hacemos UNION ALL de ambas fuentes
         query = f"""
@@ -100,6 +102,7 @@ def lambda_handler(event, context):
             WHERE   CAST(ssmp.date AS DATE) BETWEEN DATE('{start_date}') AND DATE('{end_date}')
             {filters_main_str}
             GROUP BY ssmp.date
+            
             UNION ALL
             SELECT  jsmp.date AS report_date,
                     'Jasmin' AS source,
@@ -109,6 +112,8 @@ def lambda_handler(event, context):
             WHERE   CAST(jsmp.date AS DATE) BETWEEN DATE('{start_date}') AND DATE('{end_date}')
             {filters_main_str}
             GROUP BY jsmp.date
+            
+            ORDER BY report_date ASC
         """
 
     # Athena query execution
@@ -157,17 +162,34 @@ def lambda_handler(event, context):
             QueryExecutionId=query_execution_id)
         rows = result['ResultSet']['Rows']
 
-        output = []
-        for row in rows[1:]:
-            output.append({
-                'date': row['Data'][0]['VarCharValue'],
-                'totalAmount': row['Data'][1]['VarCharValue'],
-            })
+        # Initialize the result structure
+        result_data = {
+            "streamate": [],
+            "jasmin": []
+        }
 
+        for row in rows[1:]:
+            date = row['Data'][0]['VarCharValue']
+            platform = row['Data'][1]['VarCharValue']
+            total_amount = float(row['Data'][2]['VarCharValue'])
+
+            # Append to the appropriate platform
+            if platform == "Streamate":
+                result_data["streamate"].append({
+                    "date": date,
+                    "totalAmount": total_amount
+                })
+            elif platform == "Jasmin":
+                result_data["jasmin"].append({
+                    "date": date,
+                    "totalAmount": total_amount
+                })
+
+        # Return the response with the formatted data
         return {
             'statusCode': 200,
             'headers': headers,
-            'body': json.dumps(output)
+            'body': json.dumps(result_data)
         }
 
     except Exception as e:

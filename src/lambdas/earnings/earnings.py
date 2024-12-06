@@ -160,10 +160,7 @@ def lambda_handler(event, context):
         rows = result['ResultSet']['Rows']
 
         # Initialize the result structure
-        result_data = {
-            "streamate": [],
-            "jasmin": []
-        }
+        result_data = {}
 
         # Convert Athena results to a dictionary by date
         result_dict = {
@@ -185,31 +182,35 @@ def lambda_handler(event, context):
         available_dates = sorted(set(result_dict["streamate"].keys()).union(
             set(result_dict["jasmin"].keys())))
 
-        # Create result for each available date starting from the start_date
-        for date_str in available_dates:
-            # For Streamate
-            if date_str in result_dict["streamate"]:
-                result_data["streamate"].append({
-                    "date": date_str,
-                    "totalAmount": result_dict["streamate"][date_str]
-                })
-            else:
-                result_data["streamate"].append({
-                    "date": date_str,
-                    "totalAmount": None  # Or 0 if you prefer
-                })
+        # Add Streamate data only if there is data for Streamate
+        if result_dict["streamate"]:
+            result_data["streamate"] = []
+            for date_str in available_dates:
+                if date_str in result_dict["streamate"]:
+                    result_data["streamate"].append({
+                        "date": date_str,
+                        "totalAmount": result_dict["streamate"][date_str]
+                    })
+                else:
+                    result_data["streamate"].append({
+                        "date": date_str,
+                        "totalAmount": None  # Or 0 if you prefer
+                    })
 
-            # For Jasmin
-            if date_str in result_dict["jasmin"]:
-                result_data["jasmin"].append({
-                    "date": date_str,
-                    "totalAmount": result_dict["jasmin"][date_str]
-                })
-            else:
-                result_data["jasmin"].append({
-                    "date": date_str,
-                    "totalAmount": None  # Or 0 if you prefer
-                })
+        # Always include Jasmin if there is data
+        if result_dict["jasmin"]:
+            result_data["jasmin"] = []
+            for date_str in available_dates:
+                if date_str in result_dict["jasmin"]:
+                    result_data["jasmin"].append({
+                        "date": date_str,
+                        "totalAmount": result_dict["jasmin"][date_str]
+                    })
+                else:
+                    result_data["jasmin"].append({
+                        "date": date_str,
+                        "totalAmount": None  # Or 0 if you prefer
+                    })
 
         # Return the response with the formatted data
         return {

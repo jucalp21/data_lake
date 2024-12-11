@@ -4,17 +4,11 @@
     {
       "Effect": "Allow",
       "Action": ["glue:StartCrawler"],
-      "Resource": "arn:aws:glue:us-east-1:590184094373:crawler/silver_ingest_jasmin_model_performance"
-    },
-    {
-      "Effect": "Allow",
-      "Action": ["glue:StartCrawler"],
-      "Resource": "arn:aws:glue:us-east-1:590184094373:crawler/silver_ingest_streamate_model_performance"
-    },
-    {
-      "Effect": "Allow",
-      "Action": ["glue:StartCrawler"],
-      "Resource": "arn:aws:glue:us-east-1:590184094373:crawler/ingest_streamate_bonuses"
+      "Resource": [
+        "arn:aws:glue:us-east-1:590184094373:crawler/silver_ingest_jasmin_model_performance",
+        "arn:aws:glue:us-east-1:590184094373:crawler/silver_ingest_streamate_model_performance",
+        "arn:aws:glue:us-east-1:590184094373:crawler/ingest_streamate_bonuses"
+      ]
     },
     {
       "Effect": "Allow",
@@ -30,6 +24,11 @@
       "Effect": "Allow",
       "Action": ["ec2:CreateNetworkInterface", "ec2:DescribeNetworkInterfaces", "ec2:DeleteNetworkInterface"],
       "Resource": "*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": ["sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:GetQueueAttributes"],
+      "Resource": "arn:aws:sqs:us-east-1:590184094373:S3EventQueue"
     }
   ]
 }

@@ -1,0 +1,35 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": ["glue:StartCrawler"],
+      "Resource": "arn:aws:glue:us-east-1:590184094373:crawler/silver_ingest_jasmin_model_performance"
+    },
+    {
+      "Effect": "Allow",
+      "Action": ["glue:StartCrawler"],
+      "Resource": "arn:aws:glue:us-east-1:590184094373:crawler/silver_ingest_streamate_model_performance"
+    },
+    {
+      "Effect": "Allow",
+      "Action": ["glue:StartCrawler"],
+      "Resource": "arn:aws:glue:us-east-1:590184094373:crawler/ingest_streamate_bonuses"
+    },
+    {
+      "Effect": "Allow",
+      "Action": ["s3:PutObject", "s3:GetObject", "s3:DeleteObject", "s3:ListBucket"],
+      "Resource": ["arn:aws:s3:::data-lake-demo", "arn:aws:s3:::data-lake-demo/*"]
+    },
+    {
+      "Effect": "Allow",
+      "Action": ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"],
+      "Resource": "*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": ["ec2:CreateNetworkInterface", "ec2:DescribeNetworkInterfaces", "ec2:DeleteNetworkInterface"],
+      "Resource": "*"
+    }
+  ]
+}

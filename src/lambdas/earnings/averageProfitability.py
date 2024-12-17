@@ -71,7 +71,8 @@ def lambda_handler(event, context):
         query = f"""
         SELECT base.transmissionType AS id,
                base.transmissionType AS label,
-               COALESCE(AVG(COALESCE(CAST(earnings_streamate.payableamount AS DECIMAL), 0)), 0) AS value,
+               COALESCE(AVG(COALESCE(CAST(earnings_streamate.payableamount AS DECIMAL), 0)), 0) AS total_value,
+               COALESCE(AVG(COALESCE(CAST(earnings_streamate.online_seconds AS DECIMAL), 0)) / 3600, 0) AS total_hours,
                CASE base.transmissionType
                    WHEN 'Toy' THEN '#21619A'
                    WHEN 'Privada' THEN '#EB933D'
@@ -87,9 +88,10 @@ def lambda_handler(event, context):
         ) AS base
         LEFT JOIN (
             SELECT 'Total' AS transmissionType, 
-                   SUM(COALESCE(CAST(ssmp.total_earnings AS DECIMAL), 0)) AS payableamount
-            FROM "data_lake_pdn_og"."silver_streamate_model_performance" ssmp
-            INNER JOIN "data_lake_pdn_og"."bronze_users" bu
+                   SUM(COALESCE(CAST(ssmp.total_earnings AS DECIMAL), 0)) AS payableamount,
+                   SUM(COALESCE(CAST(ssmp.online_seconds AS DECIMAL), 0)) AS online_seconds
+            FROM "data_lake_db"."silver_streamate_model_performance" ssmp
+            INNER JOIN "data_lake_db"."bronze_users" bu
                 ON ssmp._id = bu._id
             WHERE CAST(ssmp.date AS DATE) BETWEEN DATE('{start_date}') AND DATE('{end_date}')
             {filters_main_str}
@@ -108,7 +110,8 @@ def lambda_handler(event, context):
         query = f"""
         SELECT base.transmissionType AS id,
                base.transmissionType AS label,
-               COALESCE(AVG(COALESCE(CAST(earnings_jasmin.payableamount AS DECIMAL), 0)), 0) AS value,
+               COALESCE(AVG(COALESCE(CAST(earnings_jasmin.payableamount AS DECIMAL), 0)), 0) AS total_value,
+               COALESCE(AVG(COALESCE(CAST(earnings_jasmin.online_seconds AS DECIMAL), 0)) / 3600, 0) AS total_hours,
                CASE base.transmissionType
                    WHEN 'Toy' THEN '#21619A'
                    WHEN 'Privada' THEN '#EB933D'
@@ -124,9 +127,10 @@ def lambda_handler(event, context):
         ) AS base
         LEFT JOIN (
             SELECT 'Total' AS transmissionType, 
-                   SUM(COALESCE(CAST(sjmp.total_earnings AS DECIMAL), 0)) AS payableamount
-            FROM "data_lake_pdn_og"."silver_jasmin_model_performance" sjmp
-            INNER JOIN "data_lake_pdn_og"."bronze_users" bu
+                   SUM(COALESCE(CAST(sjmp.total_earnings AS DECIMAL), 0)) AS payableamount,
+                   SUM(COALESCE(CAST(sjmp.online_seconds AS DECIMAL), 0)) AS online_seconds
+            FROM "data_lake_db"."silver_jasmin_model_performance" sjmp
+            INNER JOIN "data_lake_db"."bronze_users" bu
                 ON sjmp._id = bu._id
             WHERE CAST(sjmp.date AS DATE) BETWEEN DATE('{start_date}') AND DATE('{end_date}')
             {filters_main_str}
@@ -146,7 +150,9 @@ def lambda_handler(event, context):
         SELECT base.transmissionType AS id,
                base.transmissionType AS label,
                COALESCE(AVG(COALESCE(CAST(earnings_jasmin.payableamount AS DECIMAL), 0)), 0) +
-               COALESCE(AVG(COALESCE(CAST(earnings_streamate.payableamount AS DECIMAL), 0)), 0) AS value,
+               COALESCE(AVG(COALESCE(CAST(earnings_streamate.payableamount AS DECIMAL), 0)), 0) AS total_value,
+               COALESCE(AVG(COALESCE(CAST(earnings_jasmin.online_seconds AS DECIMAL), 0)) / 3600, 0) +
+               COALESCE(AVG(COALESCE(CAST(earnings_streamate.online_seconds AS DECIMAL), 0)) / 3600, 0) AS total_hours,
                CASE base.transmissionType
                    WHEN 'Toy' THEN '#21619A'
                    WHEN 'Privada' THEN '#EB933D'
@@ -162,9 +168,10 @@ def lambda_handler(event, context):
         ) AS base
         LEFT JOIN (
             SELECT 'Total' AS transmissionType, 
-                   SUM(COALESCE(CAST(sjmp.total_earnings AS DECIMAL), 0)) AS payableamount
-            FROM "data_lake_pdn_og"."silver_jasmin_model_performance" sjmp
-            INNER JOIN "data_lake_pdn_og"."bronze_users" bu
+                   SUM(COALESCE(CAST(sjmp.total_earnings AS DECIMAL), 0)) AS payableamount,
+                   SUM(COALESCE(CAST(sjmp.online_seconds AS DECIMAL), 0)) AS online_seconds
+            FROM "data_lake_db"."silver_jasmin_model_performance" sjmp
+            INNER JOIN "data_lake_db"."bronze_users" bu
                 ON sjmp._id = bu._id
             WHERE CAST(sjmp.date AS DATE) BETWEEN DATE('{start_date}') AND DATE('{end_date}')
             {filters_main_str}
@@ -172,9 +179,10 @@ def lambda_handler(event, context):
         ) AS earnings_jasmin ON base.transmissionType = earnings_jasmin.transmissionType
         LEFT JOIN (
             SELECT 'Total' AS transmissionType, 
-                   SUM(COALESCE(CAST(ssmp.total_earnings AS DECIMAL), 0)) AS payableamount
-            FROM "data_lake_pdn_og"."silver_streamate_model_performance" ssmp
-            INNER JOIN "data_lake_pdn_og"."bronze_users" bu
+                   SUM(COALESCE(CAST(ssmp.total_earnings AS DECIMAL), 0)) AS payableamount,
+                   SUM(COALESCE(CAST(ssmp.online_seconds AS DECIMAL), 0)) AS online_seconds
+            FROM "data_lake_db"."silver_streamate_model_performance" ssmp
+            INNER JOIN "data_lake_db"."bronze_users" bu
                 ON ssmp._id = bu._id
             WHERE CAST(ssmp.date AS DATE) BETWEEN DATE('{start_date}') AND DATE('{end_date}')
             {filters_main_str}
@@ -192,8 +200,8 @@ def lambda_handler(event, context):
 
     # Athena query execution
     athena_client = boto3.client('athena')
-    database = 'data_lake_pdn_og'
-    output_location = 's3://data-lake-prd-og/gold/'
+    database = 'data_lake_db'
+    output_location = 's3://data-lake-demo/gold/'
 
     try:
         response = athena_client.start_query_execution(
@@ -241,21 +249,27 @@ def lambda_handler(event, context):
                 'statusCode': 200,
                 'headers': headers,
                 'body': json.dumps([  # Default values if no data
-                    {"id": "Toy", "label": "Toy", "value": 0.0, "color": "#21619A"},
-                    {"id": "Privada", "label": "Privada",
-                        "value": 0.0, "color": "#EB933D"},
-                    {"id": "Total", "label": "Total",
-                        "value": 0.0, "color": "#219E0D"}
+                    {"id": "Toy", "label": "Toy", "value": 0.0,
+                        "value_per_hour": 0.0, "color": "#21619A"},
+                    {"id": "Privada", "label": "Privada", "value": 0.0,
+                        "value_per_hour": 0.0, "color": "#EB933D"},
+                    {"id": "Total", "label": "Total", "value": 0.0,
+                        "value_per_hour": 0.0, "color": "#219E0D"}
                 ])
             }
 
         output = []
         for row in rows[1:]:
+            total_value = float(row['Data'][2]['VarCharValue'])
+            total_hours = float(row['Data'][3]['VarCharValue'])
+            value_per_hour = total_value / total_hours if total_hours > 0 else 0
+
             output.append({
                 'id': row['Data'][0]['VarCharValue'],
                 'label': row['Data'][1]['VarCharValue'],
-                'value': float(row['Data'][2]['VarCharValue']),
-                'color': row['Data'][3]['VarCharValue'],
+                'value': total_value,
+                'value_per_hour': value_per_hour,  # Valor por hora
+                'color': row['Data'][4]['VarCharValue'],
             })
 
         return {

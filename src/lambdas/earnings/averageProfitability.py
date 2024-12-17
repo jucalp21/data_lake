@@ -69,133 +69,137 @@ def lambda_handler(event, context):
 
     if platform == "streamate":
         query = f"""
-        SELECT base.transmissionType AS id,
-               base.transmissionType AS label,
-               COALESCE(AVG(COALESCE(CAST(earnings_streamate.payableamount AS DECIMAL), 0)), 0) AS total_value,
-               COALESCE(AVG(COALESCE(CAST(earnings_streamate.online_seconds AS DECIMAL), 0)) / 3600, 0) AS total_hours,
-               CASE base.transmissionType
-                   WHEN 'Toy' THEN '#21619A'
-                   WHEN 'Privada' THEN '#EB933D'
-                   WHEN 'Total' THEN '#219E0D'
-                   ELSE '#000000'
-               END AS color
-        FROM (
-            SELECT 'Toy' AS transmissionType
-            UNION ALL
-            SELECT 'Privada' AS transmissionType
-            UNION ALL
-            SELECT 'Total' AS transmissionType
-        ) AS base
-        LEFT JOIN (
-            SELECT 'Total' AS transmissionType, 
-                   SUM(COALESCE(CAST(ssmp.total_earnings AS DECIMAL), 0)) AS payableamount,
-                   SUM(COALESCE(CAST(ssmp.online_seconds AS DECIMAL), 0)) AS online_seconds
-            FROM "data_lake_db"."silver_streamate_model_performance" ssmp
-            INNER JOIN "data_lake_db"."bronze_users" bu
-                ON ssmp._id = bu._id
-            WHERE CAST(ssmp.date AS DATE) BETWEEN DATE('{start_date}') AND DATE('{end_date}')
-            {filters_main_str}
-            GROUP BY bu.office
-        ) AS earnings_streamate ON base.transmissionType = earnings_streamate.transmissionType
-        GROUP BY base.transmissionType
-        ORDER BY 
-            CASE 
-                WHEN base.transmissionType = 'Total' THEN 1
-                WHEN base.transmissionType = 'Privada' THEN 2
-                WHEN base.transmissionType = 'Toy' THEN 3
-                ELSE 4
-            END;
+        WITH BASE AS (
+	        SELECT 'Toy' AS transmissionType
+	        UNION ALL
+	        SELECT 'Privada' AS transmissionType
+	        UNION ALL
+	        SELECT 'Total' AS transmissionType
+        ),
+        TOTAL_EARNINGS AS (
+	        SELECT      'Total' AS transmissionType,
+		                SUM(COALESCE(CAST(ssmp.total_earnings AS DOUBLE), 0)) AS total_earnings,
+		                SUM(COALESCE(CAST(ssmp.online_seconds AS DOUBLE), 0)) AS total_seconds
+	        FROM        silver_streamate_model_performance ssmp
+	        INNER JOIN  bronze_users bu ON ssmp._id = bu._id
+	        WHERE       CAST(ssmp.date AS DATE) BETWEEN DATE('{start_date}') AND DATE('{end_date}')
+                        {filters_main_str}
+	        GROUP BY    'Total'
+        )
+
+        SELECT      b.transmissionType AS id,
+                    b.transmissionType AS label,
+                    SUM(CAST(te.total_earnings AS DOUBLE)) AS total_value,
+                    SUM(CAST(te.total_seconds AS DOUBLE)) AS total_seconds,
+                    (SUM(CAST(te.total_earnings AS DOUBLE)) / (SUM(CAST(te.total_seconds AS DOUBLE)) / 3600)) AS average_per_hour,
+                    CASE b.transmissionType
+                        WHEN 'Toy' THEN '#21619A'
+                        WHEN 'Privada' THEN '#EB933D'
+                        WHEN 'Total' THEN '#219E0D'
+                        ELSE '#000000'
+                    END AS color
+        FROM        BASE    b
+        INNER JOIN  TOTAL_EARNINGS  te  ON  b.transmissionType = te.transmissionType
+        GROUP BY    b.transmissionType
+        ORDER BY    CASE 
+                        WHEN b.transmissionType = 'Total' THEN 1
+                        WHEN b.transmissionType = 'Privada' THEN 2
+                        WHEN b.transmissionType = 'Toy' THEN 3
+                        ELSE 4
+                    END;
         """
     elif platform == "jasmin":
         query = f"""
-        SELECT base.transmissionType AS id,
-               base.transmissionType AS label,
-               COALESCE(AVG(COALESCE(CAST(earnings_jasmin.payableamount AS DECIMAL), 0)), 0) AS total_value,
-               COALESCE(AVG(COALESCE(CAST(earnings_jasmin.online_seconds AS DECIMAL), 0)) / 3600, 0) AS total_hours,
-               CASE base.transmissionType
-                   WHEN 'Toy' THEN '#21619A'
-                   WHEN 'Privada' THEN '#EB933D'
-                   WHEN 'Total' THEN '#219E0D'
-                   ELSE '#000000'
-               END AS color
-        FROM (
-            SELECT 'Toy' AS transmissionType
-            UNION ALL
-            SELECT 'Privada' AS transmissionType
-            UNION ALL
-            SELECT 'Total' AS transmissionType
-        ) AS base
-        LEFT JOIN (
-            SELECT 'Total' AS transmissionType, 
-                   SUM(COALESCE(CAST(sjmp.total_earnings AS DECIMAL), 0)) AS payableamount,
-                   SUM(COALESCE(CAST(sjmp.online_seconds AS DECIMAL), 0)) AS online_seconds
-            FROM "data_lake_db"."silver_jasmin_model_performance" sjmp
-            INNER JOIN "data_lake_db"."bronze_users" bu
-                ON sjmp._id = bu._id
-            WHERE CAST(sjmp.date AS DATE) BETWEEN DATE('{start_date}') AND DATE('{end_date}')
-            {filters_main_str}
-            GROUP BY bu.office
-        ) AS earnings_jasmin ON base.transmissionType = earnings_jasmin.transmissionType
-        GROUP BY base.transmissionType
-        ORDER BY 
-            CASE 
-                WHEN base.transmissionType = 'Total' THEN 1
-                WHEN base.transmissionType = 'Privada' THEN 2
-                WHEN base.transmissionType = 'Toy' THEN 3
-                ELSE 4
-            END;
+        WITH BASE AS (
+	        SELECT 'Toy' AS transmissionType
+	        UNION ALL
+	        SELECT 'Privada' AS transmissionType
+	        UNION ALL
+	        SELECT 'Total' AS transmissionType
+        ),
+        TOTAL_EARNINGS AS (
+	        SELECT      'Total' AS transmissionType,
+		                SUM(COALESCE(CAST(sjmp.total_earnings AS DOUBLE), 0)) AS total_earnings,
+		                SUM(COALESCE(CAST(sjmp.online_seconds AS DOUBLE), 0)) AS total_seconds
+	        FROM        silver_jasmin_model_performance sjmp
+	        INNER JOIN  bronze_users bu ON sjmp._id = bu._id
+	        WHERE       CAST(sjmp.date AS DATE) BETWEEN DATE('{start_date}') AND DATE('{end_date}')
+                        {filters_main_str}
+	        GROUP BY    'Total'
+        )
+
+        SELECT      b.transmissionType AS id,
+                    b.transmissionType AS label,
+                    SUM(CAST(te.total_earnings AS DOUBLE)) AS total_value,
+                    SUM(CAST(te.total_seconds AS DOUBLE)) AS total_seconds,
+                    (SUM(CAST(te.total_earnings AS DOUBLE)) / (SUM(CAST(te.total_seconds AS DOUBLE)) / 3600)) AS average_per_hour,
+                    CASE b.transmissionType
+                        WHEN 'Toy' THEN '#21619A'
+                        WHEN 'Privada' THEN '#EB933D'
+                        WHEN 'Total' THEN '#219E0D'
+                        ELSE '#000000'
+                    END AS color
+        FROM        BASE    b
+        INNER JOIN  TOTAL_EARNINGS  te  ON  b.transmissionType = te.transmissionType
+        GROUP BY    b.transmissionType
+        ORDER BY    CASE 
+                        WHEN b.transmissionType = 'Total' THEN 1
+                        WHEN b.transmissionType = 'Privada' THEN 2
+                        WHEN b.transmissionType = 'Toy' THEN 3
+                        ELSE 4
+                    END;
         """
-    else:  # If platform is empty or unspecified, use both tables
+    else:
         query = f"""
-        SELECT base.transmissionType AS id,
-               base.transmissionType AS label,
-               COALESCE(AVG(COALESCE(CAST(earnings_jasmin.payableamount AS DECIMAL), 0)), 0) +
-               COALESCE(AVG(COALESCE(CAST(earnings_streamate.payableamount AS DECIMAL), 0)), 0) AS total_value,
-               COALESCE(AVG(COALESCE(CAST(earnings_jasmin.online_seconds AS DECIMAL), 0)) / 3600, 0) +
-               COALESCE(AVG(COALESCE(CAST(earnings_streamate.online_seconds AS DECIMAL), 0)) / 3600, 0) AS total_hours,
-               CASE base.transmissionType
-                   WHEN 'Toy' THEN '#21619A'
-                   WHEN 'Privada' THEN '#EB933D'
-                   WHEN 'Total' THEN '#219E0D'
-                   ELSE '#000000'
-               END AS color
-        FROM (
-            SELECT 'Toy' AS transmissionType
+        WITH BASE AS (
+	        SELECT 'Toy' AS transmissionType
+	        UNION ALL
+	        SELECT 'Privada' AS transmissionType
+	        UNION ALL
+	        SELECT 'Total' AS transmissionType
+        ),
+        TOTAL_EARNINGS AS (
+            SELECT      'Total' AS transmissionType,
+		                SUM(COALESCE(CAST(ssmp.total_earnings AS DOUBLE), 0)) AS total_earnings,
+		                SUM(COALESCE(CAST(ssmp.online_seconds AS DOUBLE), 0)) AS total_seconds
+	        FROM        silver_streamate_model_performance ssmp
+	        INNER JOIN  bronze_users bu ON ssmp._id = bu._id
+	        WHERE       CAST(ssmp.date AS DATE) BETWEEN DATE('{start_date}') AND DATE('{end_date}')
+                        {filters_main_str}
+	        GROUP BY    'Total'
+
             UNION ALL
-            SELECT 'Privada' AS transmissionType
-            UNION ALL
-            SELECT 'Total' AS transmissionType
-        ) AS base
-        LEFT JOIN (
-            SELECT 'Total' AS transmissionType, 
-                   SUM(COALESCE(CAST(sjmp.total_earnings AS DECIMAL), 0)) AS payableamount,
-                   SUM(COALESCE(CAST(sjmp.online_seconds AS DECIMAL), 0)) AS online_seconds
-            FROM "data_lake_db"."silver_jasmin_model_performance" sjmp
-            INNER JOIN "data_lake_db"."bronze_users" bu
-                ON sjmp._id = bu._id
-            WHERE CAST(sjmp.date AS DATE) BETWEEN DATE('{start_date}') AND DATE('{end_date}')
-            {filters_main_str}
-            GROUP BY bu.office
-        ) AS earnings_jasmin ON base.transmissionType = earnings_jasmin.transmissionType
-        LEFT JOIN (
-            SELECT 'Total' AS transmissionType, 
-                   SUM(COALESCE(CAST(ssmp.total_earnings AS DECIMAL), 0)) AS payableamount,
-                   SUM(COALESCE(CAST(ssmp.online_seconds AS DECIMAL), 0)) AS online_seconds
-            FROM "data_lake_db"."silver_streamate_model_performance" ssmp
-            INNER JOIN "data_lake_db"."bronze_users" bu
-                ON ssmp._id = bu._id
-            WHERE CAST(ssmp.date AS DATE) BETWEEN DATE('{start_date}') AND DATE('{end_date}')
-            {filters_main_str}
-            GROUP BY bu.office
-        ) AS earnings_streamate ON base.transmissionType = earnings_streamate.transmissionType
-        GROUP BY base.transmissionType
-        ORDER BY 
-            CASE 
-                WHEN base.transmissionType = 'Total' THEN 1
-                WHEN base.transmissionType = 'Privada' THEN 2
-                WHEN base.transmissionType = 'Toy' THEN 3
-                ELSE 4
-            END;
+
+	        SELECT      'Total' AS transmissionType,
+		                SUM(COALESCE(CAST(sjmp.total_earnings AS DOUBLE), 0)) AS total_earnings,
+		                SUM(COALESCE(CAST(sjmp.online_seconds AS DOUBLE), 0)) AS total_seconds
+	        FROM        silver_jasmin_model_performance sjmp
+	        INNER JOIN  bronze_users bu ON sjmp._id = bu._id
+	        WHERE       CAST(sjmp.date AS DATE) BETWEEN DATE('{start_date}') AND DATE('{end_date}')
+                        {filters_main_str}
+	        GROUP BY    'Total'
+        )
+
+        SELECT      b.transmissionType AS id,
+                    b.transmissionType AS label,
+                    SUM(CAST(te.total_earnings AS DOUBLE)) AS total_value,
+                    SUM(CAST(te.total_seconds AS DOUBLE)) AS total_seconds,
+                    (SUM(CAST(te.total_earnings AS DOUBLE)) / (SUM(CAST(te.total_seconds AS DOUBLE)) / 3600)) AS average_per_hour,
+                    CASE b.transmissionType
+                        WHEN 'Toy' THEN '#21619A'
+                        WHEN 'Privada' THEN '#EB933D'
+                        WHEN 'Total' THEN '#219E0D'
+                        ELSE '#000000'
+                    END AS color
+        FROM        BASE    b
+        INNER JOIN  TOTAL_EARNINGS  te  ON  b.transmissionType = te.transmissionType
+        GROUP BY    b.transmissionType
+        ORDER BY    CASE 
+                        WHEN b.transmissionType = 'Total' THEN 1
+                        WHEN b.transmissionType = 'Privada' THEN 2
+                        WHEN b.transmissionType = 'Toy' THEN 3
+                        ELSE 4
+                    END;
         """
 
     # Athena query execution
@@ -248,7 +252,7 @@ def lambda_handler(event, context):
             return {
                 'statusCode': 200,
                 'headers': headers,
-                'body': json.dumps([  # Default values if no data
+                'body': json.dumps([
                     {"id": "Toy", "label": "Toy", "value": 0.0,
                         "value_per_hour": 0.0, "color": "#21619A"},
                     {"id": "Privada", "label": "Privada", "value": 0.0,
@@ -260,16 +264,12 @@ def lambda_handler(event, context):
 
         output = []
         for row in rows[1:]:
-            total_value = float(row['Data'][2]['VarCharValue'])
-            total_hours = float(row['Data'][3]['VarCharValue'])
-            value_per_hour = total_value / total_hours if total_hours > 0 else 0
 
             output.append({
                 'id': row['Data'][0]['VarCharValue'],
                 'label': row['Data'][1]['VarCharValue'],
-                'value': total_value,
-                'value_per_hour': value_per_hour,  # Valor por hora
-                'color': row['Data'][4]['VarCharValue'],
+                'value': float(row['Data'][4]['VarCharValue']),
+                'color': row['Data'][5]['VarCharValue'],
             })
 
         return {

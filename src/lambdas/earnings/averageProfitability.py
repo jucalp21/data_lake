@@ -248,7 +248,7 @@ def lambda_handler(event, context):
             QueryExecutionId=query_execution_id)
         rows = result['ResultSet']['Rows']
 
-        if len(rows) <= 1:
+        if len(rows) <= 1 or any(row['Data'][2]['VarCharValue'] == '0.0' or 'NaN' in str(row['Data']) for row in rows[1:]):
             return {
                 'statusCode': 200,
                 'headers': headers,

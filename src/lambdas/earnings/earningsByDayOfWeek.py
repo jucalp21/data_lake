@@ -69,8 +69,8 @@ def lambda_handler(event, context):
     filters_main_str = f" AND ({' OR '.join(filters_main)})" if filters_main else ""
 
     filter_platform_table = {
-        'jasmin': 'data_lake_pdn_og.silver_jasmin_model_performance',
-        'streamate': 'data_lake_pdn_og.silver_streamate_model_performance'
+        'jasmin': 'data_lake_db.silver_jasmin_model_performance',
+        'streamate': 'data_lake_db.silver_streamate_model_performance'
     }
 
     platform = platform.lower() if platform else None
@@ -100,7 +100,7 @@ def lambda_handler(event, context):
             us._id,
             CAST(eap.total_earnings AS DOUBLE) AS total_earnings
         FROM {tbl} eap
-        INNER JOIN "data_lake_pdn_og"."bronze_users" us
+        INNER JOIN "data_lake_db"."bronze_users" us
             ON eap._id = us._id
         WHERE CAST(eap."date" AS DATE) BETWEEN DATE('{start_date}') AND DATE('{end_date}')
             {filters_main_str}
@@ -116,43 +116,55 @@ def lambda_handler(event, context):
     query = f"""
     WITH combined AS (
         {union_all_query}
+    ),
+
+    averages AS (
+        SELECT
+            day_of_week(CAST(combined."date" AS DATE)) AS day_number,
+            ROUND(SUM(combined.total_earnings) / COUNT(DISTINCT CAST(combined.date AS DATE)), 2) AS avg_per_day
+        FROM combined
+        GROUP BY day_of_week(CAST(combined."date" AS DATE))
+    ),
+
+    total_avg AS (
+        SELECT SUM(avg_per_day) AS total_avg
+        FROM averages
     )
 
-    SELECT  
-        CASE 
-            WHEN day_of_week(CAST(combined."date" AS DATE)) = 1 THEN 'Lun'
-            WHEN day_of_week(CAST(combined."date" AS DATE)) = 2 THEN 'Mar'
-            WHEN day_of_week(CAST(combined."date" AS DATE)) = 3 THEN 'Mié'
-            WHEN day_of_week(CAST(combined."date" AS DATE)) = 4 THEN 'Jue'
-            WHEN day_of_week(CAST(combined."date" AS DATE)) = 5 THEN 'Vie'
-            WHEN day_of_week(CAST(combined."date" AS DATE)) = 6 THEN 'Sáb'
-            WHEN day_of_week(CAST(combined."date" AS DATE)) = 7 THEN 'Dom'
-        END AS DOW,
-        ROUND(SUM(combined.total_earnings), 2) AS TOTAL,
-        ROUND(
-            (SUM(combined.total_earnings) / (
-                SELECT SUM(combined.total_earnings)
-                FROM combined
-            )) * 100, 2
-        ) AS percentage 
+    SELECT  CASE
+                WHEN day_of_week(CAST(combined."date" AS DATE)) = 1 THEN 'Lun'
+                WHEN day_of_week(CAST(combined."date" AS DATE)) = 2 THEN 'Mar'
+                WHEN day_of_week(CAST(combined."date" AS DATE)) = 3 THEN 'Mié'
+                WHEN day_of_week(CAST(combined."date" AS DATE)) = 4 THEN 'Jue'
+                WHEN day_of_week(CAST(combined."date" AS DATE)) = 5 THEN 'Vie'
+                WHEN day_of_week(CAST(combined."date" AS DATE)) = 6 THEN 'Sáb'
+                WHEN day_of_week(CAST(combined."date" AS DATE)) = 7 THEN 'Dom'
+            END AS DOW,
+            ROUND(SUM(combined.total_earnings), 2) AS TOTAL,
+            ROUND(
+                (SUM(combined.total_earnings) / COUNT(DISTINCT CAST(combined.date AS DATE))), 2
+            ) AS average_per_day,
+            ROUND(
+                (ROUND(SUM(combined.total_earnings) / COUNT(DISTINCT CAST(combined.date AS DATE)), 2) / 
+                (SELECT total_avg FROM total_avg)) * 100, 2
+            ) AS percentage
     FROM combined 
-    WHERE 1=1 {filters_main_str}
     GROUP BY day_of_week(CAST(combined."date" AS DATE))
     ORDER BY
-        CASE 
-            WHEN day_of_week(CAST(combined."date" AS DATE)) = 7 THEN 1  -- Domingo
-            WHEN day_of_week(CAST(combined."date" AS DATE)) = 1 THEN 2  -- Lunes
-            WHEN day_of_week(CAST(combined."date" AS DATE)) = 2 THEN 3  -- Martes
-            WHEN day_of_week(CAST(combined."date" AS DATE)) = 3 THEN 4  -- Miércoles
-            WHEN day_of_week(CAST(combined."date" AS DATE)) = 4 THEN 5  -- Jueves
-            WHEN day_of_week(CAST(combined."date" AS DATE)) = 5 THEN 6  -- Viernes
-            WHEN day_of_week(CAST(combined."date" AS DATE)) = 6 THEN 7  -- Sábado
-        END ASC;
+            CASE 
+                WHEN day_of_week(CAST(combined."date" AS DATE)) = 7 THEN 1  -- Domingo
+                WHEN day_of_week(CAST(combined."date" AS DATE)) = 1 THEN 2  -- Lunes
+                WHEN day_of_week(CAST(combined."date" AS DATE)) = 2 THEN 3  -- Martes
+                WHEN day_of_week(CAST(combined."date" AS DATE)) = 3 THEN 4  -- Miércoles
+                WHEN day_of_week(CAST(combined."date" AS DATE)) = 4 THEN 5  -- Jueves
+                WHEN day_of_week(CAST(combined."date" AS DATE)) = 5 THEN 6  -- Viernes
+                WHEN day_of_week(CAST(combined."date" AS DATE)) = 6 THEN 7  -- Sábado
+            END ASC;
     """
 
     athena_client = boto3.client('athena')
-    database = 'data_lake_pdn_og'
-    output_location = "s3://data-lake-prd-og/gold/"
+    database = 'data_lake_db'
+    output_location = "s3://data-lake-demo/gold/"
 
     try:
         response = athena_client.start_query_execution(
@@ -202,18 +214,32 @@ def lambda_handler(event, context):
                 'body': json.dumps('No se encontraron resultados para el rango de fechas especificado.')
             }
 
+        # Parsear los resultados
         output = []
+        total_earnings = 0.0  # Inicializar variable para el total agrupado
         for row in rows[1:]:
+            day = row['Data'][0]['VarCharValue']
+            total_amount = float(row['Data'][2]['VarCharValue'])
+            percentage = row['Data'][3]['VarCharValue']
+
+            # Agregar el total_amount al total agrupado
+            total_earnings += total_amount
+
+            # Agregar los resultados individuales al arreglo de salida
             output.append({
-                'day': row['Data'][0]['VarCharValue'],
-                'totalAmount': row['Data'][1]['VarCharValue'],
-                'percentage': row['Data'][2]['VarCharValue'],
+                'day': day,
+                'totalAmount': f"{total_amount:.2f}",
+                'percentage': percentage,
             })
 
         return {
             'statusCode': 200,
             'headers': headers,
-            'body': json.dumps(output)
+            'body': json.dumps({
+                'days': output,
+                # Redondear el total agrupado a dos decimales
+                'total_earnings': f"{total_earnings:.2f}"
+            })
         }
 
     except Exception as e:

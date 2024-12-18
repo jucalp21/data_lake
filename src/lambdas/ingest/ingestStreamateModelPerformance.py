@@ -5,16 +5,17 @@ from datetime import datetime
 s3_client = boto3.client('s3')
 athena_client = boto3.client('athena')
 
-BUCKET_NAME = "data-lake-prd-og"
+BUCKET_NAME = "data-lake-demo"
 PREFIX = "silver/streamate_model_performance/"
-ATHENA_OUTPUT = "s3://data-lake-prd-og/athena-results-validation/"
-DATABASE_NAME = "data_lake_pdn_og"
+ATHENA_OUTPUT = "s3://data-lake-demo/athena-results-validation/"
+DATABASE_NAME = "data_lake_db"
 TABLE_NAME = "silver_streamate_model_performance"
 
 
 def query_athena(query):
     """
     Ejecuta una consulta en Athena y retorna los resultados.
+    Elimina los archivos generados en S3 después de usarlos.
     """
     try:
         response = athena_client.start_query_execution(
@@ -23,7 +24,6 @@ def query_athena(query):
             ResultConfiguration={"OutputLocation": ATHENA_OUTPUT},
         )
         query_execution_id = response['QueryExecutionId']
-        # Log del ID para rastreo
         print(f"QueryExecutionId: {query_execution_id}")
 
         # Esperar a que la consulta termine
@@ -43,7 +43,26 @@ def query_athena(query):
         result = athena_client.get_query_results(
             QueryExecutionId=query_execution_id)
         rows = result['ResultSet']['Rows']
+
+        # Eliminar los resultados de Athena de S3
+        try:
+            athena_result_path = f"athena-results-validation/{query_execution_id}.csv"
+            athena_result_path_meta = f"athena-results-validation/{query_execution_id}.csv.metadata"
+            s3_client.delete_object(
+                Bucket=BUCKET_NAME,
+                Key=athena_result_path
+            )
+            s3_client.delete_object(
+                Bucket=BUCKET_NAME,
+                Key=athena_result_path_meta
+            )
+            print(f"Athena result file deleted: {athena_result_path}")
+            print(f"Athena result file deleted: {athena_result_path_meta}")
+        except Exception as delete_error:
+            print(f"Failed to delete Athena result file: {delete_error}")
+
         return rows
+
     except Exception as e:
         print(f"Error executing query: {query}")
         raise Exception(f"Athena query error: {str(e)}")
@@ -67,7 +86,7 @@ def check_and_update(data):
             existing_row = rows[1]['Data']
             prev_total_earnings = float(existing_row[0]['VarCharValue'])
             prev_online_seconds = float(existing_row[1]['VarCharValue'])
-            file_name = existing_row[2]['VarCharValue']
+            file_name = existing_row[2].get('VarCharValue')
 
             new_total_earnings = float(data['total_earnings'])
             new_online_seconds = float(data['online_seconds'])
@@ -98,8 +117,13 @@ def check_and_update(data):
                 )
                 print(f"Trazability data stored at: {trace_file_name}")
 
-            # Si los valores son diferentes, eliminar el archivo viejo en S3
-            s3_client.delete_object(Bucket=BUCKET_NAME, Key=file_name)
+            # Si los valores son diferentes, eliminar el archivo viejo
+            if file_name:  # Si file_name no está vacío
+                s3_client.delete_object(Bucket=BUCKET_NAME, Key=file_name)
+                print(f"Deleted old file: {file_name}")
+            else:
+                print(f"No file to delete for ID: {_id}, Date: {date}")
+
             return False  # Indica que el archivo debe reemplazarse
 
         return False  # Si no existe el registro, es un nuevo registro

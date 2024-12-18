@@ -5,10 +5,10 @@ from datetime import datetime
 s3_client = boto3.client('s3')
 athena_client = boto3.client('athena')
 
-BUCKET_NAME = "data-lake-demo"
+BUCKET_NAME = "data-lake-prd-og"
 PREFIX = "silver/jasmin_model_performance/"
-ATHENA_OUTPUT = "s3://data-lake-demo/athena-results-validation/"
-DATABASE_NAME = "data_lake_db"
+ATHENA_OUTPUT = "s3://data-lake-prd-og/athena-results-validation/"
+DATABASE_NAME = "data_lake_pdn_og"
 TABLE_NAME = "silver_jasmin_model_performance"
 
 
@@ -67,7 +67,7 @@ def check_and_update(data):
             existing_row = rows[1]['Data']
             prev_total_earnings = float(existing_row[0]['VarCharValue'])
             prev_online_seconds = float(existing_row[1]['VarCharValue'])
-            file_name = existing_row[2]['VarCharValue']
+            file_name = existing_row[2].get('VarCharValue')
 
             new_total_earnings = float(data['total_earnings'])
             new_online_seconds = float(data['online_seconds'])
@@ -98,8 +98,13 @@ def check_and_update(data):
                 )
                 print(f"Trazability data stored at: {trace_file_name}")
 
-            # Si los valores son diferentes, eliminar el archivo viejo en S3
-            s3_client.delete_object(Bucket=BUCKET_NAME, Key=file_name)
+            # Si los valores son diferentes, eliminar el archivo viejo
+            if file_name:  # Si file_name no está vacío
+                s3_client.delete_object(Bucket=BUCKET_NAME, Key=file_name)
+                print(f"Deleted old file: {file_name}")
+            else:
+                print(f"No file to delete for ID: {_id}, Date: {date}")
+
             return False  # Indica que el archivo debe reemplazarse
 
         return False  # Si no existe el registro, es un nuevo registro
@@ -144,4 +149,4 @@ def lambda_handler(event, context):
 
     except Exception as e:
         print(f"Error in Lambda handler: {str(e)}")
-        return {"statusCode": 500, "body": json.dumps({"message": str(e)})}
+        return {"statusCode": 500, "body": json.dumps({"message": f"custom error: {str(e)}"})}

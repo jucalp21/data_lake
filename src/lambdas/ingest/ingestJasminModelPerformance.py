@@ -5,10 +5,10 @@ from datetime import datetime
 s3_client = boto3.client('s3')
 athena_client = boto3.client('athena')
 
-BUCKET_NAME = "data-lake-demo"
+BUCKET_NAME = "data-lake-prd-og"
 PREFIX = "silver/jasmin_model_performance/"
-ATHENA_OUTPUT = "s3://data-lake-demo/athena-results-validation/"
-DATABASE_NAME = "data_lake_db"
+ATHENA_OUTPUT = "s3://data-lake-prd-og/athena-results-validation/"
+DATABASE_NAME = "data_lake_pdn_og"
 TABLE_NAME = "silver_jasmin_model_performance"
 
 

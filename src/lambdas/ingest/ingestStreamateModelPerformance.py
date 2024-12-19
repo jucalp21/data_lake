@@ -86,12 +86,12 @@ def check_and_update(data):
         rows = query_athena(query)
         if len(rows) > 1:  # Ignorar encabezado
             existing_row = rows[1]['Data']
-            prev_total_earnings = float(existing_row[0]['VarCharValue'])
-            prev_online_seconds = float(existing_row[1]['VarCharValue'])
+            prev_total_earnings = existing_row[0]['VarCharValue']
+            prev_online_seconds = existing_row[1]['VarCharValue']
             file_name = existing_row[2].get('VarCharValue')
 
-            new_total_earnings = float(data['total_earnings'])
-            new_online_seconds = float(data['online_seconds'])
+            new_total_earnings = data['total_earnings']
+            new_online_seconds = data['online_seconds']
 
             # Si el nuevo valor de total_earnings es menor, registrar trazabilidad
             if new_total_earnings < prev_total_earnings:

@@ -7,10 +7,10 @@ import pyarrow.parquet as pq
 import pyarrow as pa
 
 # URL de la API
-api_url = "https://1astats.models1a.com/api/v1/user"
+api_url = "https://devstreamatemock.omgworldwidegroup.com/api/v1/user"
 
 # Ruta base de S3 para almacenar los datos particionados
-s3_bucket = "data-lake-prd-og"
+s3_bucket = "data-lake-demo"
 s3_prefix = "bronze/users/"
 
 headers = {
@@ -22,21 +22,11 @@ headers = {
 
 def extract_data(api_url):
     response = requests.get(api_url, headers=headers)
+    response.raise_for_status()  # Asegurar que la solicitud fue exitosa
     data = response.json()
     return pd.DataFrame(data['users'])
 
-# Función para agregar columnas de fecha y hora
-
-
-def add_datetime_columns(df, timestamp):
-    df['year'] = timestamp.year
-    df['month'] = f"{timestamp.month:02d}"  # Formatear el mes con dos dígitos
-    df['day'] = timestamp.day
-    df['hour'] = timestamp.hour
-    df['minute'] = timestamp.minute
-    return df
-
-# Función para cargar datos desde S3 en formato Parquet
+# Función para cargar datos existentes desde S3 en formato Parquet
 
 
 def load_existing_data(s3_bucket, s3_prefix, year, month):
@@ -48,8 +38,7 @@ def load_existing_data(s3_bucket, s3_prefix, year, month):
         table = pq.read_table(io.BytesIO(data))
         return table.to_pandas()
     except s3_client.exceptions.NoSuchKey:
-        # Si no existe el archivo, devolver un DataFrame vacío
-        return pd.DataFrame()
+        return pd.DataFrame()  # Si no existe el archivo, devolver un DataFrame vacío
 
 # Función para guardar datos en S3 en formato Parquet
 
@@ -69,9 +58,6 @@ now = datetime.now()
 # Extraer nueva data desde la API
 new_df = extract_data(api_url)
 
-# Agregar las columnas de fecha y hora a la nueva data
-new_df = add_datetime_columns(new_df, now)
-
 # Manejo de nulos: convertir valores nulos de la API a NaN de pandas
 new_df = new_df.where(pd.notnull(new_df), None)
 
@@ -79,10 +65,20 @@ new_df = new_df.where(pd.notnull(new_df), None)
 existing_df = load_existing_data(
     s3_bucket, s3_prefix, now.year, f"{now.month:02d}")
 
-# Combinar la data existente con la nueva data
-combined_df = pd.concat([existing_df, new_df])
+# Unir datos existentes con nuevos, reemplazando valores para usuarios existentes
+if not existing_df.empty:
+    # Asegurar que ambas tablas tienen las mismas columnas
+    new_df = new_df.reindex(columns=existing_df.columns, fill_value=None)
+    # Indexar por `_id` para facilitar reemplazos
+    existing_df.set_index('_id', inplace=True)
+    new_df.set_index('_id', inplace=True)
 
-# Asegurarse de que los tipos de datos sean hashables (convertir listas o diccionarios en cadenas)
+    # Actualizar registros existentes y agregar nuevos
+    combined_df = new_df.combine_first(existing_df).reset_index()
+else:
+    combined_df = new_df  # Si no hay datos existentes, usar los nuevos directamente
+
+# Asegurarse de que los tipos de datos sean hashables
 for col in combined_df.columns:
     if combined_df[col].apply(lambda x: isinstance(x, (dict, list))).any():
         print(
@@ -90,10 +86,13 @@ for col in combined_df.columns:
         combined_df[col] = combined_df[col].apply(
             lambda x: str(x) if isinstance(x, (dict, list)) else x)
 
-# Eliminar registros duplicados basados en las columnas relevantes
-subset = [col for col in combined_df.columns if col not in [
-    'year', 'month', 'day', 'hour', 'minute']]
-combined_df = combined_df.drop_duplicates(subset=subset)
+# Validar si el DataFrame resultante tiene duplicados adicionales (diagnóstico)
+duplicate_check = combined_df.duplicated(subset=['_id']).sum()
+if duplicate_check > 0:
+    print(
+        f"Advertencia: Hay {duplicate_check} duplicados restantes en la columna '_id'.")
+else:
+    print("Duplicados eliminados exitosamente.")
 
 # Guardar la data combinada y validada en el bucket S3 en formato Parquet
 save_data_to_s3(combined_df, s3_bucket, s3_prefix,

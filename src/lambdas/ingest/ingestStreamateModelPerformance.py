@@ -5,10 +5,11 @@ from datetime import datetime
 s3_client = boto3.client('s3')
 athena_client = boto3.client('athena')
 
-BUCKET_NAME = "data-lake-prd-og"
+BUCKET_NAME = "data-lake-demo"
 PREFIX = "silver/streamate_model_performance/"
-ATHENA_OUTPUT = "s3://data-lake-prd-og/athena-results-validation/"
-DATABASE_NAME = "data_lake_pdn_og"
+TRACE_PREFIX = "silver/traceability/streamate_model_performance_traceability/"
+ATHENA_OUTPUT = "s3://data-lake-demo/athena-results-validation/"
+DATABASE_NAME = "data_lake_db"
 TABLE_NAME = "silver_streamate_model_performance"
 
 
@@ -71,7 +72,8 @@ def query_athena(query):
 def check_and_update(data):
     """
     Verifica si existe un registro duplicado o diferente en Athena.
-    Si el nuevo valor de total_earnings es menor, guarda los detalles en otra ubicación en S3 para trazabilidad.
+    Si los valores son diferentes, actualiza el archivo existente en S3.
+    Si total_earnings disminuye, guarda los detalles en trazabilidad.
     """
     _id = data["_id"]
     date = data["date"]
@@ -91,13 +93,9 @@ def check_and_update(data):
             new_total_earnings = float(data['total_earnings'])
             new_online_seconds = float(data['online_seconds'])
 
-            # Si el registro es idéntico, no hay que actualizar
-            if prev_total_earnings == new_total_earnings and prev_online_seconds == new_online_seconds:
-                return True  # Registro duplicado exacto, no actualizar
-
-            # Si el nuevo valor de total_earnings es menor que el anterior, almacenar trazabilidad
+            # Si el nuevo valor de total_earnings es menor, registrar trazabilidad
             if new_total_earnings < prev_total_earnings:
-                trace_file_name = f"silver/traceability/streamate_model_performance_traceability/{_id}_{date}_trace.json"
+                trace_file_name = f"{TRACE_PREFIX}{_id}_{date}_trace.json"
                 trace_data = {
                     "date": date,
                     "_id": _id,
@@ -105,28 +103,39 @@ def check_and_update(data):
                     "new_total_earnings": new_total_earnings,
                     "prev_online_seconds": prev_online_seconds,
                     "new_online_seconds": new_online_seconds,
-                    "processed_at": datetime.now().isoformat()  # Agregar timestamp de procesamiento
+                    "processed_at": datetime.now().isoformat()
                 }
 
-                # Subir el archivo de trazabilidad a una ubicación separada en S3
                 s3_client.put_object(
                     Bucket=BUCKET_NAME,
                     Key=trace_file_name,
                     Body=json.dumps(trace_data),
                     ContentType="application/json"
                 )
-                print(f"Trazability data stored at: {trace_file_name}")
+                print(f"Traceability data stored at: {trace_file_name}")
 
-            # Si los valores son diferentes, eliminar el archivo viejo
-            if file_name:  # Si file_name no está vacío
-                s3_client.delete_object(Bucket=BUCKET_NAME, Key=file_name)
-                print(f"Deleted old file: {file_name}")
+            if file_name:
+                obj = s3_client.get_object(Bucket=BUCKET_NAME, Key=file_name)
+                existing_data = json.loads(obj['Body'].read())
+
+                existing_data["total_earnings"] = new_total_earnings
+                existing_data["online_seconds"] = new_online_seconds
+                existing_data["updated_at"] = datetime.now().isoformat()
+
+                s3_client.put_object(
+                    Bucket=BUCKET_NAME,
+                    Key=file_name,
+                    Body=json.dumps(existing_data),
+                    ContentType="application/json"
+                )
+                print(f"Updated file in S3: {file_name}")
+                return True
+
             else:
-                print(f"No file to delete for ID: {_id}, Date: {date}")
+                print(f"No file found for ID: {_id}, Date: {date}")
+                return False
 
-            return False  # Indica que el archivo debe reemplazarse
-
-        return False  # Si no existe el registro, es un nuevo registro
+        return False
 
     except Exception as e:
         print(f"Error checking or updating record: {str(e)}")
@@ -146,17 +155,12 @@ def lambda_handler(event, context):
             if key not in data:
                 return {"statusCode": 400, "body": json.dumps({"message": f"Missing key: {key}"})}
 
-        # Verificar duplicados o necesidad de actualización
         if check_and_update(data):
-            return {"statusCode": 409, "body": json.dumps({"message": "Duplicate data detected, no update needed"})}
+            return {"statusCode": 200, "body": json.dumps({"message": "Data successfully updated in S3"})}
 
-        # Guardar datos en S3
         file_name = f"{PREFIX}{data['_id']}_{data['date']}.json"
-
-        # Agregar el nombre del archivo al registro
         data["file"] = file_name
 
-        # Subir el nuevo archivo
         s3_client.put_object(
             Bucket=BUCKET_NAME,
             Key=file_name,
@@ -164,7 +168,7 @@ def lambda_handler(event, context):
             ContentType="application/json"
         )
 
-        return {"statusCode": 200, "body": json.dumps({"message": "Data successfully updated or saved", "file_name": file_name})}
+        return {"statusCode": 201, "body": json.dumps({"message": "New data successfully saved in S3", "file_name": file_name})}
 
     except Exception as e:
         print(f"Error in Lambda handler: {str(e)}")

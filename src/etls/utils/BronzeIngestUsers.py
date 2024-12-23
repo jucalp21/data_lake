@@ -7,10 +7,10 @@ import pyarrow.parquet as pq
 import pyarrow as pa
 
 # URL de la API
-api_url = "https://devstreamatemock.omgworldwidegroup.com/api/v1/user"
+api_url = "https://1astats.models1a.com/api/v1/user"
 
 # Ruta base de S3 para almacenar los datos particionados
-s3_bucket = "data-lake-demo"
+s3_bucket = "data-lake-prd-og"
 s3_prefix = "bronze/users/"
 
 headers = {
